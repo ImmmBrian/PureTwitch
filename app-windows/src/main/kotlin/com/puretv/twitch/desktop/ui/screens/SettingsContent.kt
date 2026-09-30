@@ -1,5 +1,10 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import com.puretv.twitch.desktop.data.SettingsPanel
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -66,7 +71,13 @@ import com.puretv.twitch.desktop.update.resolveReleaseUrl
 import org.koin.core.Koin
 
 @Composable
-fun SettingsContent(koin: Koin, onExit: () -> Unit) {
+fun SettingsContent(
+    koin: Koin,
+    onExit: () -> Unit,
+    /** A panel to scroll to (from search). [onFocusShown] clears it once there. */
+    focus: SettingsPanel? = null,
+    onFocusShown: () -> Unit = {},
+) {
     val viewModel = rememberDesktopViewModel { koin.get<SettingsViewModel>() }
     val state by viewModel.state.collectAsState()
     val updateManager = remember { koin.get<UpdateManager>() }
@@ -76,84 +87,118 @@ fun SettingsContent(koin: Koin, onExit: () -> Unit) {
     // write as SettingsViewModel's own setters underneath.
     val settingsStore = remember { koin.get<DesktopSettingsStore>() }
 
+    // Where each panel sits in the scrolling column, so search can jump to it.
+    val scroll = rememberScrollState()
+    val panelTops = remember { mutableStateMapOf<SettingsPanel, Int>() }
+    fun Modifier.anchor(panel: SettingsPanel) = onGloballyPositioned {
+        val y = it.positionInParent().y.toInt()
+        if (panelTops[panel] != y) panelTops[panel] = y
+    }
+    LaunchedEffect(focus, panelTops[focus]) {
+        val target = focus ?: return@LaunchedEffect
+        val y = panelTops[target] ?: return@LaunchedEffect
+        scroll.animateScrollTo((y - 24).coerceAtLeast(0))
+        onFocusShown()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(top = 36.dp, start = 32.dp, end = 32.dp, bottom = 40.dp),
     ) {
         PageTitle("Settings")
         Spacer(Modifier.height(28.dp))
 
-        ColourPanel(
-            currentVariant = ThemeVariant.fromKey(state.settings.theme),
-            onSelect = { variant -> settingsStore.updateSettings { it.copy(theme = variant.key) } },
-        )
+        Box(Modifier.anchor(SettingsPanel.COLOUR)) {
+            ColourPanel(
+                currentVariant = ThemeVariant.fromKey(state.settings.theme),
+                onSelect = { variant -> settingsStore.updateSettings { it.copy(theme = variant.key) } },
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
-        ShapeAndMotionPanel(
-            currentIntensity = ShapeIntensity.fromKey(state.settings.shapeIntensity),
-            onSelect = { intensity -> settingsStore.updateSettings { it.copy(shapeIntensity = intensity.key) } },
-        )
+        Box(Modifier.anchor(SettingsPanel.SHAPE)) {
+            ShapeAndMotionPanel(
+                currentIntensity = ShapeIntensity.fromKey(state.settings.shapeIntensity),
+                onSelect = { intensity -> settingsStore.updateSettings { it.copy(shapeIntensity = intensity.key) } },
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
         val lookStore = remember { koin.get<ViewPrefsStore>() }
         val lookPrefs by lookStore.prefs.collectAsState()
-        PersonalizePanel(store = lookStore, look = lookPrefs.look)
+        Box(Modifier.anchor(SettingsPanel.PERSONALIZE)) {
+            PersonalizePanel(store = lookStore, look = lookPrefs.look)
+        }
         Spacer(Modifier.height(16.dp))
 
-        PlaybackPanel(
-            selectedQuality = StreamQuality.entries.firstOrNull {
-                state.settings.preferredQuality.equals(it.name, ignoreCase = true)
-            } ?: StreamQuality.AUTO,
-            onSelectQuality = viewModel::setPreferredQuality,
-            animateEmotes = state.settings.animateEmotes,
-            onAnimateEmotesChange = viewModel::setAnimateEmotes,
-        )
+        Box(Modifier.anchor(SettingsPanel.PLAYBACK)) {
+            PlaybackPanel(
+                selectedQuality = StreamQuality.entries.firstOrNull {
+                    state.settings.preferredQuality.equals(it.name, ignoreCase = true)
+                } ?: StreamQuality.AUTO,
+                onSelectQuality = viewModel::setPreferredQuality,
+                animateEmotes = state.settings.animateEmotes,
+                onAnimateEmotesChange = viewModel::setAnimateEmotes,
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
         val prefsStore = remember { koin.get<ViewPrefsStore>() }
         val prefs by prefsStore.prefs.collectAsState()
 
-        BrowsingPanel(
-            oneClickWatch = prefs.oneClickWatch,
-            onOneClickWatchChange = prefsStore::setOneClickWatch,
-            lowQualityWhenDocked = prefs.lowQualityWhenDocked,
-            onLowQualityChange = prefsStore::setLowQualityWhenDocked,
-            miniSize = prefs.miniSizeEnum,
-            onMiniSizeChange = prefsStore::setMiniSize,
-        )
+        Box(Modifier.anchor(SettingsPanel.BROWSING)) {
+            BrowsingPanel(
+                oneClickWatch = prefs.oneClickWatch,
+                onOneClickWatchChange = prefsStore::setOneClickWatch,
+                lowQualityWhenDocked = prefs.lowQualityWhenDocked,
+                onLowQualityChange = prefsStore::setLowQualityWhenDocked,
+                miniSize = prefs.miniSizeEnum,
+                onMiniSizeChange = prefsStore::setMiniSize,
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
-        ChatFiltersPanel(
-            ignored = prefs.ignoredUsers,
-            onUnignore = { prefsStore.setIgnored(it, false) },
-            onIgnore = { prefsStore.setIgnored(it, true) },
-            highlightWords = prefs.highlightWords,
-            onHighlightWordsChange = prefsStore::setHighlightWords,
-        )
+        Box(Modifier.anchor(SettingsPanel.CHAT)) {
+            ChatFiltersPanel(
+                ignored = prefs.ignoredUsers,
+                onUnignore = { prefsStore.setIgnored(it, false) },
+                onIgnore = { prefsStore.setIgnored(it, true) },
+                highlightWords = prefs.highlightWords,
+                onHighlightWordsChange = prefsStore::setHighlightWords,
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
-        BackupPanel(onExit = onExit)
+        Box(Modifier.anchor(SettingsPanel.BACKUP)) {
+            BackupPanel(onExit = onExit)
+        }
         Spacer(Modifier.height(16.dp))
 
-        AdBlockPanel()
+        Box(Modifier.anchor(SettingsPanel.ADBLOCK)) {
+            AdBlockPanel()
+        }
         Spacer(Modifier.height(16.dp))
 
-        AccountPanel(
-            isLoggedIn = state.isLoggedIn,
-            username = state.loginUsername,
-            onLogOut = viewModel::logOut,
-        )
+        Box(Modifier.anchor(SettingsPanel.ACCOUNT)) {
+            AccountPanel(
+                isLoggedIn = state.isLoggedIn,
+                username = state.loginUsername,
+                onLogOut = viewModel::logOut,
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
-        AboutPanel(
-            version = updateManager.currentVersion,
-            updateState = updateState,
-            onCheckForUpdates = { updateManager.checkForUpdates(force = true) },
-            onDownloadAndInstall = { info -> updateManager.downloadAndInstall(info, onExit) },
-            onOpenDownloadPage = { url -> openInBrowser(url) },
-        )
+        Box(Modifier.anchor(SettingsPanel.ABOUT)) {
+            AboutPanel(
+                version = updateManager.currentVersion,
+                updateState = updateState,
+                onCheckForUpdates = { updateManager.checkForUpdates(force = true) },
+                onDownloadAndInstall = { info -> updateManager.downloadAndInstall(info, onExit) },
+                onOpenDownloadPage = { url -> openInBrowser(url) },
+            )
+        }
     }
 }
 

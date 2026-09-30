@@ -45,11 +45,15 @@ import com.puretv.twitch.desktop.player.LocalStreamProxy
 import com.puretv.twitch.desktop.player.PlaybackStallWatchdog
 import com.puretv.twitch.desktop.player.ProxyUnavailableException
 import com.puretv.twitch.desktop.player.DesktopPlayer
+import com.puretv.twitch.desktop.channel.ChatModes
+import com.puretv.twitch.desktop.data.SettingsEntry
+import com.puretv.twitch.desktop.data.searchSettings
 import com.puretv.twitch.desktop.channel.RaidWatcher
 import com.puretv.twitch.desktop.ui.chat.ChatModeration
 import com.puretv.twitch.desktop.ui.chat.buildSelfEcho
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -300,35 +304,52 @@ class CategoryViewModel(
 data class SearchUiState(
     val query: String = "",
     val results: List<ChannelSearchResult> = emptyList(),
+    val categories: List<GameInfo> = emptyList(),
+    /** Matching settings. Local, so these show instantly while the rest loads. */
+    val settings: List<SettingsEntry> = emptyList(),
     val isSearching: Boolean = false,
     /** Non-null when the search request failed — lets the screen say "search failed" with
      *  a Retry rather than showing the same blank as "no matches". */
     val error: String? = null,
-)
+) {
+    val isEmpty: Boolean get() = results.isEmpty() && categories.isEmpty() && settings.isEmpty()
+}
 
+/**
+ * Search everything: channels and categories from Twitch, plus PureTV's own
+ * settings. Used by the Search tab and the Ctrl+Shift+Space search bar.
+ */
 class SearchViewModel(private val channelRepository: ChannelRepository) : DesktopViewModel() {
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
     // One in-flight search at a time. Cancelling the previous job both debounces
     // typing and prevents an earlier query's slower response from overwriting a
-    // newer query's results (the out-of-order/stale-result race) — without it,
-    // typing "ab" then "abc" could leave "ab"'s results showing under "abc".
+    // newer query's results (the out-of-order/stale-result race).
     private var searchJob: Job? = null
 
     fun onQueryChange(query: String) {
-        _state.update { it.copy(query = query) }
+        _state.update { it.copy(query = query, settings = searchSettings(query)) }
         searchJob?.cancel()
-        if (query.length < 2) {
-            _state.update { it.copy(results = emptyList(), isSearching = false, error = null) }
+        if (query.trim().length < 2) {
+            _state.update { it.copy(results = emptyList(), categories = emptyList(), isSearching = false, error = null) }
             return
         }
         searchJob = scope.launch {
             _state.update { it.copy(isSearching = true, error = null) }
-            delay(300) // debounce: wait for typing to settle before hitting the network
-            runCatching { channelRepository.search(query) }
-                .onSuccess { results -> _state.update { it.copy(results = results, isSearching = false, error = null) } }
-                .onFailure { _state.update { it.copy(results = emptyList(), isSearching = false, error = "Search failed. Check your connection and try again.") } }
+            delay(250) // debounce: wait for typing to settle before hitting the network
+            val channels = async { runCatching { channelRepository.search(query.trim()) } }
+            val games = async { runCatching { channelRepository.searchCategories(query.trim()) } }
+            val c = channels.await()
+            val g = games.await()
+            _state.update {
+                it.copy(
+                    results = c.getOrDefault(emptyList()),
+                    categories = g.getOrDefault(emptyList()),
+                    isSearching = false,
+                    error = if (c.isFailure && g.isFailure) "Search failed. Check your connection and try again." else null,
+                )
+            }
         }
     }
 
@@ -361,6 +382,8 @@ data class StreamUiState(
     val fatalError: String? = null,
     /** Set when this channel raids someone; the UI offers (and counts down to) following it. */
     val raid: RaidNotice? = null,
+    /** Slow mode, emote-only, followers-only and friends, for the chat header. */
+    val chatModes: ChatModes = ChatModes(),
 )
 
 /** A raid out of the channel being watched, with when we heard about it (for the countdown). */
@@ -607,9 +630,9 @@ class StreamViewModel(
                     is ChatEvent.UserNotice -> event.systemMessage.ifBlank { null }?.let { sys ->
                         _state.update { it.copy(chatMessages = it.chatMessages.appendCapped(systemMessage(sys))) }
                     }
-                    // RoomState/ConnectionState are parsed in core but not surfaced in
-                    // this panel yet (no slow-mode / connection banner). Intentionally ignored.
-                    is ChatEvent.RoomState, is ChatEvent.ConnectionState -> {}
+                    is ChatEvent.RoomState -> _state.update { it.copy(chatModes = it.chatModes.merge(event)) }
+                    // No connection banner; the chat simply resumes on reconnect.
+                    is ChatEvent.ConnectionState -> {}
                 }
             }
         }

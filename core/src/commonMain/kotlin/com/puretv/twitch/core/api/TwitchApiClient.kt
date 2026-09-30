@@ -195,6 +195,23 @@ class TwitchApiClient(
         return resp.data
     }
 
+    /**
+     * GET /schedule — a channel's upcoming scheduled streams. Null when the
+     * channel has never set up a schedule (Helix answers 404 for those).
+     */
+    suspend fun getSchedule(broadcasterId: String, first: Int = 5): HelixSchedule? {
+        if (broadcasterId.isBlank()) return null
+        return try {
+            val resp: HelixScheduleEnvelope = get(
+                "/schedule",
+                mapOf("broadcaster_id" to broadcasterId, "first" to first.coerceIn(1, 25).toString()),
+            )
+            resp.data
+        } catch (e: HelixApiException) {
+            if (e.statusCode == 404) null else throw e
+        }
+    }
+
     /** GET /search/channels — search by query string. */
     suspend fun searchChannels(query: String, liveOnly: Boolean = false): List<ChannelSearchResult> {
         val resp: HelixEnvelope<ChannelSearchResult> = get(
@@ -372,6 +389,36 @@ fun HelixVideo.toDomain(): VideoInfo =
 
 /** A page of videos plus the cursor for the next page (null when no more). */
 data class VideoPage(val videos: List<VideoInfo>, val cursor: String?)
+
+@Serializable
+data class HelixScheduleEnvelope(val data: HelixSchedule? = null)
+
+@Serializable
+data class HelixSchedule(
+    val broadcaster_id: String = "",
+    val broadcaster_login: String = "",
+    val broadcaster_name: String = "",
+    val segments: List<HelixScheduleSegment>? = null,
+    val vacation: HelixVacation? = null,
+)
+
+@Serializable
+data class HelixScheduleSegment(
+    val id: String = "",
+    val start_time: String = "",
+    val end_time: String? = null,
+    val title: String = "",
+    /** Set when this occurrence was cancelled. */
+    val canceled_until: String? = null,
+    val category: HelixScheduleCategory? = null,
+    val is_recurring: Boolean = false,
+)
+
+@Serializable
+data class HelixScheduleCategory(val id: String = "", val name: String = "")
+
+@Serializable
+data class HelixVacation(val start_time: String = "", val end_time: String = "")
 
 @Serializable
 data class FollowedChannel(

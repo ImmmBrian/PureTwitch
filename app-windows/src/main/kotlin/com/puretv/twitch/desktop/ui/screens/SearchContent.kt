@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,9 +54,10 @@ import com.puretv.twitch.desktop.ui.theme.PureTvType
 import org.koin.core.Koin
 
 @Composable
-fun SearchContent(koin: Koin, onOpenChannel: (String) -> Unit, onWatch: (String) -> Unit = onOpenChannel) {
+fun SearchContent(koin: Koin, actions: SearchActions, hiddenTabs: List<String>) {
     val viewModel = rememberDesktopViewModel { koin.get<SearchViewModel>() }
     val state by viewModel.state.collectAsState()
+    val hits = remember(state, hiddenTabs) { searchHits(state, hiddenTabs, SEARCH_TAB_LIMITS) }
     val c = PureTvTheme.colors
 
     Column(
@@ -67,7 +68,8 @@ fun SearchContent(koin: Koin, onOpenChannel: (String) -> Unit, onWatch: (String)
         SearchField(query = state.query, onQueryChange = viewModel::onQueryChange)
 
         when {
-            state.error != null -> {
+            // Settings are local, so they can show even when Twitch can't be reached.
+            state.error != null && hits.isEmpty() -> {
                 EditorialEmptyState(
                     kicker = "Search",
                     title = "Search failed",
@@ -78,31 +80,7 @@ fun SearchContent(koin: Koin, onOpenChannel: (String) -> Unit, onWatch: (String)
                 )
             }
 
-            state.isSearching -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(
-                        color = c.primary,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text("Searching...", style = PureTvType.data, color = c.onSurfaceVariant)
-                }
-            }
-
-            state.results.isEmpty() -> {
-                EditorialEmptyState(
-                    kicker = "Search",
-                    title = "Find a channel",
-                    message = "Search for streamers and categories.",
-                    modifier = Modifier.padding(top = 24.dp),
-                )
-            }
-
-            else -> {
+            hits.isNotEmpty() -> {
                 Spacer(Modifier.height(24.dp))
                 Box(
                     modifier = Modifier
@@ -110,19 +88,58 @@ fun SearchContent(koin: Koin, onOpenChannel: (String) -> Unit, onWatch: (String)
                         .clip(RoundedCornerShape(PureTvTheme.shapes.card))
                         .background(c.surfaceLow),
                 ) {
-                    // Container clips its children, so the first and last row inherit
-                    // its rounding without each row needing its own corner logic.
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(state.results, key = { it.id }) { result ->
-                            SearchResultRow(
-                                result = result,
-                                onClick = { if (result.is_live) onWatch(result.broadcaster_login) else onOpenChannel(result.broadcaster_login) },
-                            )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(8.dp),
+                    ) {
+                        hits.forEachIndexed { i, hit ->
+                            if (i == 0 || sectionTitle(hits[i - 1]) != sectionTitle(hit)) {
+                                item(key = "header:" + sectionTitle(hit)) { SectionHeader(sectionTitle(hit)) }
+                            }
+                            item(key = hit.key) {
+                                SearchHitRow(hit, selected = false, compact = false, onClick = { actions.run(hit) })
+                            }
+                        }
+                        if (state.isSearching) {
+                            item(key = "searching") { SearchingRow(Modifier.padding(16.dp)) }
                         }
                     }
                 }
             }
+
+            state.isSearching -> SearchingRow(Modifier.padding(top = 32.dp))
+
+            state.query.trim().length >= 2 -> {
+                EditorialEmptyState(
+                    kicker = "Search",
+                    title = "Nothing found",
+                    message = "No channels, categories or settings match \"${state.query.trim()}\".",
+                    modifier = Modifier.padding(top = 24.dp),
+                )
+            }
+
+            else -> {
+                EditorialEmptyState(
+                    kicker = "Search",
+                    title = "Search everything",
+                    message = "Channels, categories and settings. Press Ctrl+Shift+Space anywhere to search without leaving what you're watching.",
+                    modifier = Modifier.padding(top = 24.dp),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun SearchingRow(modifier: Modifier = Modifier) {
+    val c = PureTvTheme.colors
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(color = c.primary, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+        Text("Searching...", style = PureTvType.data, color = c.onSurfaceVariant)
     }
 }
 
@@ -164,7 +181,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier
         Box(modifier = Modifier.weight(1f)) {
             if (query.isEmpty()) {
                 Text(
-                    "Search channels and categories",
+                    "Search channels, categories and settings",
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
                     color = c.onSurfaceVariant,
                     maxLines = 1,
@@ -189,61 +206,6 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier
                 boxSize = 44.dp,
                 iconSize = 22.dp,
             )
-        }
-    }
-}
-
-@Composable
-private fun SearchResultRow(result: ChannelSearchResult, onClick: () -> Unit) {
-    val c = PureTvTheme.colors
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    val rowColor by animateColorAsState(
-        targetValue = if (hovered) c.surfaceHigh else Color.Transparent,
-        animationSpec = tween(PureTvMotion.Fast),
-        label = "rowHover",
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .hoverable(interaction)
-            .handCursor()
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .background(rowColor)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        // The search/channels result carries a profile image, not a stream still,
-        // so the channel reads best as an Avatar rather than a 16:10 cover.
-        Avatar(
-            displayName = result.display_name,
-            imageUrl = result.thumbnail_url.takeIf { it.isNotBlank() },
-            size = 52,
-        )
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                result.display_name,
-                style = MaterialTheme.typography.titleMedium,
-                color = c.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                if (result.is_live) result.game_name.ifBlank { result.title.ifBlank { "Live" } } else "Offline",
-                style = MaterialTheme.typography.bodyMedium,
-                color = c.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        // No viewer count exists on the search model, so live results show a bare
-        // LIVE pill rather than LivePill's trailing-count form.
-        if (result.is_live) {
-            LivePill()
         }
     }
 }

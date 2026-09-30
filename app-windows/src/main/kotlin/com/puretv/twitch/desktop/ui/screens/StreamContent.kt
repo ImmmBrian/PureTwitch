@@ -87,6 +87,7 @@ import com.puretv.twitch.core.model.ChatMessage
 import com.puretv.twitch.core.model.StreamInfo
 import com.puretv.twitch.core.model.StreamQuality
 import com.puretv.twitch.core.model.UpscalingMode
+import com.puretv.twitch.desktop.channel.ChatModeLabel
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.player.DesktopPlayer
 import com.puretv.twitch.desktop.discover.formatUptime
@@ -288,6 +289,9 @@ fun StreamContent(
                 return@KeyEventDispatcher true
             }
             if (e.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
+            // Page shortcuts are bare keys; Ctrl/Alt combos (like Ctrl+Shift+Space
+            // for search) belong to the app.
+            if (e.isControlDown || e.isAltDown) return@KeyEventDispatcher false
             val m = latestMode.value
             when (e.keyCode) {
                 KeyEvent.VK_F -> { shell.setPlayerMode(if (m == PlayerMode.FULLSCREEN) PlayerMode.DEFAULT else PlayerMode.FULLSCREEN); true }
@@ -647,6 +651,10 @@ internal fun LiveChatPanel(
             onPopOut = onPopOut,
             poppedOut = poppedOut,
         )
+
+        // Only shows when chat is restricted, so an open chat stays uncluttered.
+        val modes = remember(state.chatModes) { state.chatModes.labels() }
+        if (modes.isNotEmpty()) ChatModesRow(modes)
 
         Box(
             modifier = Modifier
@@ -1159,6 +1167,33 @@ private fun ChatHeader(
                 onClick = onClose,
                 boxSize = 48.dp,
                 iconSize = 22.dp,
+            )
+        }
+    }
+}
+
+/** Slow mode, emote-only and the rest, as quiet pills under the chat header. */
+@Composable
+private fun ChatModesRow(modes: List<ChatModeLabel>) {
+    val c = PureTvTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        modes.forEach { mode ->
+            Text(
+                mode.text,
+                style = MaterialTheme.typography.labelMedium,
+                color = c.onTertiaryContainer,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(PureTvTheme.shapes.pillShape)
+                    .background(c.tertiaryContainer)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }
     }

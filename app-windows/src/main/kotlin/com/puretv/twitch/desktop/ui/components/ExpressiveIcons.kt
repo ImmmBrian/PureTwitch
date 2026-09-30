@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Explore
@@ -145,6 +146,7 @@ object ExpressiveIcons {
     val Surprise: ImageVector = Icons.Filled.Casino
     val SaveSearch: ImageVector = Icons.Filled.BookmarkAdd
     val History: ImageVector = Icons.Filled.History
+    val Schedule: ImageVector = Icons.Filled.Event
 
     // Status / layout
     val Shield: ImageVector = Icons.Filled.Shield

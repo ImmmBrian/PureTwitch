@@ -159,7 +159,18 @@ sealed class ChatEvent {
     data class UserNotice(val systemMessage: String, val raw: ChatMessage?) : ChatEvent()
     data class ClearChat(val targetUser: String?, val durationSeconds: Int?) : ChatEvent()
     data class ClearMessage(val targetMessageId: String) : ChatEvent()
-    data class RoomState(val slowModeSeconds: Int?, val emoteOnly: Boolean) : ChatEvent()
+    /**
+     * Chat room modes. Twitch sends every tag on JOIN but only the changed tag
+     * afterwards, so each field is null when that tag wasn't in this update.
+     * [followersOnlyMinutes] is -1 when followers-only is off.
+     */
+    data class RoomState(
+        val slowModeSeconds: Int?,
+        val emoteOnly: Boolean?,
+        val followersOnlyMinutes: Int? = null,
+        val subsOnly: Boolean? = null,
+        val uniqueChat: Boolean? = null,
+    ) : ChatEvent()
     data class SelfState(val displayName: String, val color: String, val badges: List<Badge>) : ChatEvent()
     data class ConnectionState(val connected: Boolean, val reason: String? = null) : ChatEvent()
 }

@@ -109,6 +109,24 @@ val desktopModule = module {
     // Raid alerts over Twitch's EventSub WebSocket; needs the signed-in user's token.
     single { val holder = get<TokenHolder>(); RaidWatcher(get()) { holder.current() } }
     single { DiscoverRepository(get<TwitchApiClient>(), get<TwitchDirectoryGql>()) }
+    // Upcoming streams from followed channels' Twitch schedules (Home's Coming up shelf).
+    single {
+        val api = get<TwitchApiClient>()
+        val store = get<DesktopSettingsStore>()
+        val localFollows = get<FollowStore>()
+        com.puretv.twitch.desktop.channel.ScheduleService(api) {
+            val local = localFollows.followed.value.map {
+                com.puretv.twitch.desktop.channel.ScheduleChannel(it.id, it.login, it.displayName)
+            }
+            val userId = if (store.isLoggedIn) store.sessionUserId else null
+            val remote = userId?.let { id ->
+                runCatching { api.getAllFollowedChannels(id) }.getOrDefault(emptyList()).map {
+                    com.puretv.twitch.desktop.channel.ScheduleChannel(it.broadcaster_id, it.broadcaster_login, it.broadcaster_name)
+                }
+            }.orEmpty()
+            remote + local
+        }
+    }
     factory {
         val gql = get<TwitchDirectoryGql>()
         BrowseViewModel(get(), viewerCounts = { ids -> gql.gameViewerCounts(ids) })

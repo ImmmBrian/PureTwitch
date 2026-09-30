@@ -11,6 +11,26 @@ release notes automatically.
 
 ---
 
+## 1.18.0 - 2026-09-30
+
+Search everything, a quick search bar, schedules and easier-to-read chat.
+
+### New
+- **Search finds everything.** The Search tab now shows channels, categories,
+  settings and tabs in one list. Pick a setting and Settings opens right at it.
+- **Ctrl+Shift+Space** opens a floating search bar from anywhere, even over a
+  stream. Use the arrow keys to pick, Enter to open, Esc to close.
+- **Coming up** on Home: the next scheduled stream from each channel you follow,
+  from their Twitch schedule. Hide it in Settings, under Personalize.
+- **Chat mode labels.** Chat shows when it's in slow mode, emote only,
+  followers only, sub only or unique chat. Nothing shows when chat is open.
+
+### Improved
+- **Chat is easier to read.** Messages wrap like normal text under the name,
+  lines have more room, and dark name colors are lightened so every name is
+  readable. The reply button appears when you hover a message.
+- Wide 7TV and BTTV emotes keep their real shape inline.
+
 ## 1.17.0 - 2026-09-30
 
 Stats for nerds.

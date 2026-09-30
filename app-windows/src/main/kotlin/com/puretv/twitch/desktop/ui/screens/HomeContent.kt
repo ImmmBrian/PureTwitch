@@ -1,5 +1,10 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
+import com.puretv.twitch.desktop.channel.ScheduleService
+import com.puretv.twitch.desktop.channel.UpcomingStream
+import com.puretv.twitch.desktop.channel.formatScheduleTime
 import com.puretv.twitch.desktop.data.HomeSection
 import com.puretv.twitch.desktop.ui.theme.gridColumns
 import com.puretv.twitch.desktop.ui.theme.LocalCompactLayout
@@ -138,6 +143,21 @@ fun HomeContent(
         if (sort == ListSort.VIEWERS) state.topStreams.sortedByDescending { it.viewerCount } else state.topStreams
     }
 
+    // Coming up: followed channels' scheduled streams. Only fetched when the
+    // shelf is on; refreshed every 10 minutes while Home is open.
+    val showUpcoming = state.isLoggedIn && prefs.look.showsHomeSection(HomeSection.UPCOMING)
+    val schedules = remember { koin.get<ScheduleService>() }
+    val upcoming by produceState(emptyList<UpcomingStream>(), showUpcoming) {
+        if (!showUpcoming) { value = emptyList(); return@produceState }
+        while (true) {
+            value = runCatching { schedules.upcoming() }.getOrDefault(value)
+            delay(10 * 60_000L)
+        }
+    }
+    val avatars = remember(railState.live, railState.offline) {
+        (railState.live + railState.offline).associate { it.login.lowercase() to it.avatarUrl }
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(gridColumns(4, LocalCompactLayout.current)),
         modifier = Modifier.fillMaxSize(),
@@ -252,6 +272,26 @@ fun HomeContent(
                                         title = ch.title,
                                         onClick = { if (ch.isLive) onWatch(ch.login) else onOpenChannel(ch.login) },
                                         modifier = Modifier.width(240.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (upcoming.isNotEmpty() && showUpcoming) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(Modifier.padding(top = 20.dp)) {
+                            SectionHeading(title = "Coming up")
+                            Spacer(Modifier.height(16.dp))
+                            val now = remember(upcoming) { System.currentTimeMillis() / 1000 }
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(upcoming, key = { "up_${it.login}" }) { u ->
+                                    UpcomingCard(
+                                        stream = u,
+                                        avatarUrl = avatars[u.login.lowercase()],
+                                        nowSec = now,
+                                        onClick = { onOpenChannel(u.login) },
                                     )
                                 }
                             }
@@ -724,4 +764,48 @@ internal fun mergeFollowShelf(local: List<FollowCardState>, liveFollows: List<Fo
         .sortedByDescending { it.viewerCount }
     val liveLogins = live.map { it.login.lowercase() }.toSet()
     return live + local.filter { !it.isLive && it.login.lowercase() !in liveLogins }
+}
+
+/** One scheduled stream on the Coming up shelf: when, who, and what. */
+@Composable
+private fun UpcomingCard(stream: UpcomingStream, avatarUrl: String?, nowSec: Long, onClick: () -> Unit) {
+    val c = PureTvTheme.colors
+    val interaction = remember { MutableInteractionSource() }
+    Column(
+        modifier = Modifier
+            .width(260.dp)
+            .height(148.dp)
+            .expressiveClickable(
+                interaction = interaction,
+                onClick = onClick,
+                restRadius = PureTvTheme.shapes.card,
+                hoverRadius = PureTvTheme.shapes.cardMorph,
+                color = c.surfaceContainer,
+                hoverColor = c.surfaceHigh,
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(ExpressiveIcons.Schedule, contentDescription = null, tint = c.primary, modifier = Modifier.size(16.dp))
+            Text(formatScheduleTime(stream.startEpochSec, nowSec), style = PureTvType.data, color = c.primary, maxLines = 1)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Avatar(displayName = stream.displayName, imageUrl = avatarUrl, size = 28)
+            Text(
+                stream.displayName,
+                style = MaterialTheme.typography.titleSmall,
+                color = c.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            listOf(stream.title, stream.category).filter { it.isNotBlank() }.joinToString("  ·  ").ifBlank { "Scheduled stream" },
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }

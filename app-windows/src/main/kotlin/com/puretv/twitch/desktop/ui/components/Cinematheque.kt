@@ -54,6 +54,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImagePainter
 import com.puretv.twitch.core.adblock.AdBlockStatus
 import com.puretv.twitch.core.model.ChatMessage
 import com.puretv.twitch.core.model.EmoteLayer
@@ -396,8 +410,9 @@ fun ChatMessageRow(
         when (nameMode) {
             com.puretv.twitch.desktop.data.ChatNameColors.ACCENT -> c.primary
             com.puretv.twitch.desktop.data.ChatNameColors.PLAIN -> c.onSurface
+            // Their own color, lifted when it's too dark to read on the panel.
             com.puretv.twitch.desktop.data.ChatNameColors.TWITCH ->
-                runCatching { Color(AwtColor.decode(message.color).rgb or (0xFF shl 24)) }.getOrDefault(c.primary)
+                runCatching { Color(readableNameArgb(AwtColor.decode(message.color).rgb)) }.getOrDefault(c.primary)
         }
     }
     // Every row is its own rounded container rather than a flat line in a list. A
@@ -414,105 +429,163 @@ fun ChatMessageRow(
         animationSpec = tween(PureTvMotion.Fast),
         label = "chatRowFill",
     )
-    val rowModifier = modifier
-        .fillMaxWidth()
-        .clip(PureTvTheme.shapes.mdShape)
-        .background(rowFill)
-        .hoverable(rowInteraction)
-        .padding(horizontal = 12.dp, vertical = 7.dp)
-    Column(modifier = rowModifier) {
-        val parentName = message.replyParentDisplayName
-        if (parentName != null) {
-            Text(
-                "replying to @" + parentName,
-                style = MaterialTheme.typography.labelSmall,
-                color = c.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 2.dp, bottom = 1.dp),
-            )
-        }
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-        if (showTimestamps) {
-            val ts = remember(message.timestamp) { formatClock(message.timestamp) }
-            Text(ts, style = PureTvType.dataSmall, color = c.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.padding(end = 2.dp))
-        }
-        val badgeIndex = LocalBadgeIndex.current
-        val resolvedBadges = if (badgeIndex === BadgeIndex.EMPTY) emptyList()
-            else message.badges.mapNotNull { badgeIndex.resolve(it.setId, it.version) }
-        if (resolvedBadges.isNotEmpty()) {
-            // Badge art is already square (BadgeIndex resolves the 2x CDN image),
-            // so a fixed square box is correct here, no aspect-ratio bug to fix.
-            resolvedBadges.forEach { EmoteImage(it.url, it.title, Modifier.size(18.dp)) }
-        } else {
-            // Badge art not loaded yet (or this channel returned none), so fall back to
-            // the lightweight text chips so rank is still legible.
-            if (message.isBroadcaster) ChatBadge("HOST", c.primary, c.onPrimary)
-            else if (message.isModerator) ChatBadge("MOD", c.tertiaryContainer, c.onTertiaryContainer)
-            if (message.isSubscriber) ChatBadge("SUB", c.secondaryContainer, c.onSecondaryContainer)
-        }
-
-        Text(
-            message.displayName,
-            color = nameColor,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = if (onUserClick != null) {
-                Modifier
-                    .pointerHoverIcon(PointerIcon.Hand)
-                    .clickable { onUserClick(message) }
-            } else {
-                Modifier
-            },
-        )
-
-        if (message.deleted) {
-            // Moderator removed this message (timeout/ban/delete). Tombstone it
-            // instead of dropping the row so the thread stays readable.
-            Text(
-                "<message deleted>",
-                color = c.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                fontStyle = FontStyle.Italic,
-            )
-        } else {
-            val parts = message.parsedParts.ifEmpty { listOf(MessagePart.Text(message.message)) }
-            parts.forEach { part ->
-                when (part) {
-                    is MessagePart.Text -> Text(part.content, color = c.onSurface, style = MaterialTheme.typography.bodyLarge)
-                    is MessagePart.TwitchEmote -> StackedEmote(
-                        "https://static-cdn.jtvnw.net/emoticons/v2/${part.id}/default/dark/2.0",
-                        part.name,
-                        animated = false,
-                        part.overlays,
-                        // Twitch enforces a square emote canvas, so the fixed square
-                        // box is already correct. Skip the height-only path (and its
-                        // load-time reflow) for the majority of emotes in most chats.
-                        naturalAspect = false,
-                    )
-                    is MessagePart.ThirdPartyEmote -> StackedEmote(part.url, part.name, part.animated, part.overlays)
-                }
+    val textColor = if (message.mentionsSelf) c.onPrimaryContainer else c.onSurface
+    val mutedColor = if (message.mentionsSelf) c.onPrimaryContainer.copy(alpha = 0.7f) else c.onSurfaceVariant
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(PureTvTheme.shapes.mdShape)
+            .background(rowFill)
+            .hoverable(rowInteraction)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            val parentName = message.replyParentDisplayName
+            if (parentName != null) {
+                Text(
+                    "replying to @" + parentName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
+                )
             }
+            ChatLine(message, nameColor, textColor, mutedColor, showTimestamps, onUserClick)
         }
-        if (onReply != null) {
+        // Reply appears on hover only, so resting chat is just names and words.
+        if (onReply != null && rowHovered) {
             IconButton(
                 onClick = { onReply(message) },
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(c.surfaceHighest),
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Reply,
                     contentDescription = "Reply",
-                    tint = c.onSurfaceVariant,
+                    tint = c.onSurface,
                     modifier = Modifier.size(16.dp),
                 )
             }
         }
+    }
+}
+
+/** Chat line height. Taller than body text so wrapped lines and emotes don't crowd. */
+private val CHAT_LINE_HEIGHT = 22.sp
+private val CHAT_EMOTE_HEIGHT = 26.sp
+private val CHAT_BADGE_SIZE = 18.sp
+
+/**
+ * One message as a single flowing paragraph: time, badges, name, then the words
+ * and emotes, wrapping like prose. Badges and emotes sit inline as images, so a
+ * long message wraps under the name instead of dropping to its own block.
+ */
+@Composable
+private fun ChatLine(
+    message: ChatMessage,
+    nameColor: Color,
+    textColor: Color,
+    mutedColor: Color,
+    showTimestamps: Boolean,
+    onUserClick: ((ChatMessage) -> Unit)?,
+) {
+    val c = PureTvTheme.colors
+    val badgeIndex = LocalBadgeIndex.current
+    val resolvedBadges = if (badgeIndex === BadgeIndex.EMPTY) emptyList()
+        else message.badges.mapNotNull { badgeIndex.resolve(it.setId, it.version) }
+    val inline = HashMap<String, InlineTextContent>()
+    val text = buildAnnotatedString {
+        if (showTimestamps) {
+            val ts = formatClock(message.timestamp)
+            if (ts.isNotEmpty()) {
+                withStyle(SpanStyle(color = mutedColor.copy(alpha = 0.7f), fontSize = 12.sp, fontFamily = PureTvType.dataSmall.fontFamily)) { append(ts) }
+                append("  ")
+            }
+        }
+        if (resolvedBadges.isNotEmpty()) {
+            resolvedBadges.forEachIndexed { i, badge ->
+                val id = "badge$i"
+                appendInlineContent(id, badge.title)
+                inline[id] = InlineTextContent(Placeholder(CHAT_BADGE_SIZE, CHAT_BADGE_SIZE, PlaceholderVerticalAlign.Center)) {
+                    EmoteImage(badge.url, badge.title, Modifier.fillMaxSize())
+                }
+                append(" ")
+            }
+        } else {
+            // Badge art not loaded yet (or this channel has none): short text tags keep rank legible.
+            fun tag(label: String, bg: Color, fg: Color) {
+                withStyle(SpanStyle(color = fg, background = bg, fontSize = 11.sp, fontWeight = FontWeight.Bold)) { append(" $label ") }
+                append(" ")
+            }
+            if (message.isBroadcaster) tag("HOST", c.primary, c.onPrimary)
+            else if (message.isModerator) tag("MOD", c.tertiaryContainer, c.onTertiaryContainer)
+            if (message.isSubscriber) tag("SUB", c.secondaryContainer, c.onSecondaryContainer)
+        }
+        val nameStyle = SpanStyle(color = nameColor, fontWeight = FontWeight.Bold)
+        if (onUserClick != null) {
+            withLink(
+                LinkAnnotation.Clickable(
+                    tag = "user",
+                    styles = TextLinkStyles(
+                        style = nameStyle,
+                        hoveredStyle = SpanStyle(textDecoration = TextDecoration.Underline),
+                    ),
+                    linkInteractionListener = { onUserClick(message) },
+                ),
+            ) { append(message.displayName) }
+        } else {
+            withStyle(nameStyle) { append(message.displayName) }
+        }
+        withStyle(SpanStyle(color = mutedColor)) { append(": ") }
+
+        if (message.deleted) {
+            // Removed by a moderator: keep a tombstone so the thread still reads.
+            withStyle(SpanStyle(color = mutedColor, fontStyle = FontStyle.Italic)) { append("<message deleted>") }
+        } else {
+            val parts = message.parsedParts.ifEmpty { listOf(MessagePart.Text(message.message)) }
+            parts.forEachIndexed { i, part ->
+                when (part) {
+                    is MessagePart.Text -> append(part.content)
+                    is MessagePart.TwitchEmote -> {
+                        // Twitch emotes are always square.
+                        val id = "emote$i"
+                        appendInlineContent(id, part.name)
+                        inline[id] = InlineTextContent(Placeholder(CHAT_EMOTE_HEIGHT, CHAT_EMOTE_HEIGHT, PlaceholderVerticalAlign.Center)) {
+                            InlineEmote(
+                                "https://static-cdn.jtvnw.net/emoticons/v2/${part.id}/default/dark/2.0",
+                                part.name,
+                                animated = false,
+                                overlays = part.overlays,
+                                reportAspect = false,
+                            )
+                        }
+                    }
+                    is MessagePart.ThirdPartyEmote -> {
+                        val id = "emote$i"
+                        val stacked = part.overlays.isNotEmpty()
+                        // Overlay stacks share the base emote's square canvas so they line up.
+                        val ratio = if (stacked) 1f else EmoteAspects.of(part.url)
+                        appendInlineContent(id, part.name)
+                        inline[id] = InlineTextContent(
+                            Placeholder(CHAT_EMOTE_HEIGHT * ratio, CHAT_EMOTE_HEIGHT, PlaceholderVerticalAlign.Center),
+                        ) {
+                            InlineEmote(part.url, part.name, part.animated, part.overlays, reportAspect = !stacked)
+                        }
+                    }
+                }
+            }
         }
     }
+    Text(
+        text,
+        color = textColor,
+        style = MaterialTheme.typography.bodyLarge.copy(lineHeight = CHAT_LINE_HEIGHT),
+        inlineContent = inline,
+    )
 }
 
 @Composable
@@ -529,47 +602,42 @@ private fun ChatBadge(text: String, bg: Color, fg: Color) {
 }
 
 @Composable
-internal fun EmoteImage(url: String, name: String, modifier: Modifier = Modifier.size(20.dp)) {
+internal fun EmoteImage(
+    url: String,
+    name: String,
+    modifier: Modifier = Modifier.size(20.dp),
+    onSize: ((Int, Int) -> Unit)? = null,
+) {
     AsyncImage(
         model = url,
         contentDescription = name,
         modifier = modifier,
+        contentScale = ContentScale.Fit,
+        onSuccess = onSize?.let { report ->
+            { state: AsyncImagePainter.State.Success ->
+                val size = state.painter.intrinsicSize
+                if (size.isSpecified) report(size.width.toInt(), size.height.toInt())
+            }
+        },
     )
 }
 
-/**
- * [naturalAspect] pins only the row height and lets width follow the emote's own
- * aspect ratio, the same fixed-line-height layout Twitch web and Chatterino use,
- * so wide/tall 7TV and BTTV emotes render at their real proportions instead of
- * being squashed into a square box. Zero-width overlay stacks pass `false`
- * because the overlay must share the base emote's exact square canvas to align.
- */
+/** An emote (plus any zero-width overlays) filling its inline slot in a chat line. */
 @Composable
-private fun EmoteGlyph(url: String, name: String, animated: Boolean, size: Dp, naturalAspect: Boolean = true) {
-    val sizing = if (naturalAspect) Modifier.height(size) else Modifier.size(size)
-    if (animated && LocalEmoteAnimation.current) {
-        AnimatedEmote(url, name, sizing) { u, n, m -> EmoteImage(u, n, m) }
-    } else {
-        EmoteImage(url, name, sizing)
+private fun InlineEmote(url: String, name: String, animated: Boolean, overlays: List<EmoteLayer>, reportAspect: Boolean) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        EmoteFill(url, name, animated, onSize = { w: Int, h: Int -> EmoteAspects.report(url, w, h) }.takeIf { reportAspect })
+        overlays.forEach { layer -> EmoteFill(layer.url, layer.name, layer.animated, onSize = null) }
     }
 }
 
 @Composable
-private fun StackedEmote(
-    baseUrl: String,
-    name: String,
-    animated: Boolean,
-    overlays: List<EmoteLayer>,
-    size: Dp = 28.dp,
-    naturalAspect: Boolean = true,
-) {
-    if (overlays.isEmpty()) {
-        EmoteGlyph(baseUrl, name, animated, size, naturalAspect)
-        return
-    }
-    Box(contentAlignment = Alignment.Center) {
-        EmoteGlyph(baseUrl, name, animated, size, naturalAspect = false)
-        overlays.forEach { layer -> EmoteGlyph(layer.url, layer.name, layer.animated, size, naturalAspect = false) }
+private fun EmoteFill(url: String, name: String, animated: Boolean, onSize: ((Int, Int) -> Unit)?) {
+    val fill = Modifier.fillMaxSize()
+    if (animated && LocalEmoteAnimation.current) {
+        AnimatedEmote(url, name, fill, onFrameSize = onSize) { u, n, m -> EmoteImage(u, n, m, onSize) }
+    } else {
+        EmoteImage(url, name, fill, onSize)
     }
 }
 

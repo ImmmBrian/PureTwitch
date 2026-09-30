@@ -17,6 +17,7 @@ enum class HomeSection(val label: String) {
     CONTINUE("Continue watching"),
     RECENT("Recently watched"),
     FOLLOWS("Channels you follow"),
+    UPCOMING("Coming up"),
     LIVE("Live now"),
 }
 

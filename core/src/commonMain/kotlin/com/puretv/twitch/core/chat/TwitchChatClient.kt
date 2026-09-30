@@ -287,7 +287,10 @@ object TwitchIrcParser {
             "CLEARMSG" -> tags["target-msg-id"]?.let { ChatEvent.ClearMessage(it) }
             "ROOMSTATE" -> ChatEvent.RoomState(
                 slowModeSeconds = tags["slow"]?.toIntOrNull(),
-                emoteOnly = tags["emote-only"] == "1",
+                emoteOnly = tags["emote-only"]?.let { it == "1" },
+                followersOnlyMinutes = tags["followers-only"]?.toIntOrNull(),
+                subsOnly = tags["subs-only"]?.let { it == "1" },
+                uniqueChat = tags["r9k"]?.let { it == "1" },
             )
             "GLOBALUSERSTATE" -> ChatEvent.SelfState(
                 displayName = tags["display-name"].orEmpty(),

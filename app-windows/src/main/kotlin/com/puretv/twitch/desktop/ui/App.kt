@@ -36,6 +36,7 @@ import androidx.compose.runtime.produceState
 import com.puretv.twitch.desktop.ui.components.LocalChatAppearance
 import com.puretv.twitch.desktop.ui.components.ChatAppearance
 import com.puretv.twitch.desktop.ui.theme.LocalCompactLayout
+import com.puretv.twitch.desktop.data.SettingsPanel
 import com.puretv.twitch.desktop.data.ViewPrefsStore
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.LocalDensity
@@ -100,6 +101,7 @@ import com.puretv.twitch.desktop.ui.screens.DiscoverContent
 import com.puretv.twitch.desktop.ui.screens.FollowingContent
 import com.puretv.twitch.desktop.ui.screens.HomeContent
 import com.puretv.twitch.desktop.ui.screens.LoginContent
+import com.puretv.twitch.desktop.ui.screens.SearchActions
 import com.puretv.twitch.desktop.ui.screens.SearchContent
 import com.puretv.twitch.desktop.ui.screens.SettingsContent
 import com.puretv.twitch.desktop.ui.screens.StreamContent
@@ -326,6 +328,25 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                 if (viewPrefs.oneClickWatch) openStream(login) else route = Route.Channel(login)
             }
 
+            // Search (the tab and the Ctrl+Shift+Space bar) lands here.
+            var settingsFocus by remember { mutableStateOf<SettingsPanel?>(null) }
+            val searchActions = SearchActions(
+                openChannel = { login -> route = Route.Channel(login) },
+                watch = { login -> watch(login) },
+                openCategory = { id, name -> route = Route.Category(id, name) },
+                openSettings = { panel ->
+                    settingsFocus = panel
+                    destination = Destination.SETTINGS
+                    route = Route.Top
+                },
+                openPage = { d ->
+                    destination = d
+                    route = Route.Top
+                },
+            )
+            var searchBarOpen by remember { mutableStateOf(false) }
+            SearchHotkey { searchBarOpen = !searchBarOpen }
+
             // The window ground is the DEEPEST surface in the ladder, so the rail and
             // the content pane read as two cards floating on it. That separation is
             // what the 8dp gutter and the 28dp pane corners are for; without the
@@ -476,10 +497,15 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                     )
                                     Destination.SEARCH -> SearchContent(
                                         koin = koin,
-                                        onOpenChannel = { login -> route = Route.Channel(login) },
-                                        onWatch = { login -> watch(login) },
+                                        actions = searchActions,
+                                        hiddenTabs = look.hiddenTabs,
                                     )
-                                    Destination.SETTINGS -> SettingsContent(koin = koin, onExit = onClose)
+                                    Destination.SETTINGS -> SettingsContent(
+                                        koin = koin,
+                                        onExit = onClose,
+                                        focus = settingsFocus,
+                                        onFocusShown = { settingsFocus = null },
+                                    )
                                     Destination.ACCOUNT -> LoginContent(koin = koin)
                                 }
                             }
@@ -507,6 +533,15 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                         host = playbackHost,
                         player = player,
                         onReturn = { playbackHost.popOutRequested = false },
+                    )
+                }
+                if (searchBarOpen) {
+                    SearchPalette(
+                        koin = koin,
+                        anchor = awtWindow,
+                        hiddenTabs = look.hiddenTabs,
+                        actions = searchActions,
+                        onDismiss = { searchBarOpen = false },
                     )
                 }
                 if (playbackHost.chatPoppedOut && playbackHost.active != null) {

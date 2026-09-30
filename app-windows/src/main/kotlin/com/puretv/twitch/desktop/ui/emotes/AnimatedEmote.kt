@@ -28,6 +28,8 @@ fun AnimatedEmote(
     url: String,
     name: String,
     modifier: Modifier,
+    /** Called with the first frame's pixel size once the frames are decoded. */
+    onFrameSize: ((Int, Int) -> Unit)? = null,
     staticFallback: @Composable (String, String, Modifier) -> Unit,
 ) {
     val cache = LocalEmoteFrameCache.current
@@ -48,6 +50,7 @@ fun AnimatedEmote(
 
     var index by remember(url) { mutableStateOf(0) }
     LaunchedEffect(current) {
+        current.frames.firstOrNull()?.let { onFrameSize?.invoke(it.width, it.height) }
         var start = 0L
         var first = true
         while (true) {
