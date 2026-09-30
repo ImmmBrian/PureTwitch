@@ -11,6 +11,22 @@ release notes automatically.
 
 ---
 
+## 1.17.0 - 2026-09-30
+
+Stats for nerds.
+
+### New
+- **Stats for nerds** under every stream and on channel pages, in a card you can
+  open and close. Real numbers only:
+  - **Last 30 days** (from TwitchTracker): rank, average and peak viewers, hours
+    streamed and watched, new followers per day and per live hour, and how the
+    stream is doing right now against its average.
+  - **This stream:** peak, average and low viewers with a live chart.
+  - **Chat:** messages per minute, active chatters, share of subs chatting,
+    mods active, and the top emotes.
+  - **Ad blocking:** roughly how much ad time PureTV has skipped for you.
+- **Hide all stats** with one switch in Settings, under Personalize.
+
 ## 1.16.0 - 2026-09-30
 
 Make PureTV yours: a new Personalize section in Settings.

@@ -52,6 +52,10 @@ data class Personalization(
     val chatTextScale: String = TextScale.DEFAULT.name,
     val chatTimestamps: Boolean = true,
     val chatNameColors: String = ChatNameColors.TWITCH.name,
+    /** Channel stats (the audience panel and Stats for nerds). Off hides them everywhere. */
+    val showStats: Boolean = true,
+    /** Whether the Stats for nerds card starts open. Remembered as you toggle it. */
+    val statsExpanded: Boolean = false,
 ) {
     val textScaleEnum: TextScale get() = enumOr(textScale, TextScale.DEFAULT)
     val densityEnum: LayoutDensity get() = enumOr(density, LayoutDensity.COMFORTABLE)

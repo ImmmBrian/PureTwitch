@@ -133,6 +133,13 @@ internal fun PersonalizePanel(store: ViewPrefsStore, look: Personalization) {
                 }
             }
 
+            Group("Channel stats", "The audience panel and Stats for nerds under streams and on channel pages.") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("Show stats", style = MaterialTheme.typography.bodyLarge, color = c.onSurface, modifier = Modifier.width(120.dp))
+                    ExpressiveSwitch(checked = look.showStats, onCheckedChange = { on -> store.setLook { it.copy(showStats = on) } })
+                }
+            }
+
             Group("Chat", null) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("Text size", style = MaterialTheme.typography.bodyLarge, color = c.onSurface, modifier = Modifier.width(120.dp))

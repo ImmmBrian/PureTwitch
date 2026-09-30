@@ -555,6 +555,7 @@ fun StreamContent(
                             channelLogin = channelLogin,
                             channel = state.channel,
                             streamInfo = state.streamInfo,
+                            chat = state.chatMessages,
                         )
                         Spacer(Modifier.height(8.dp))
                     }
@@ -718,8 +719,10 @@ private fun StreamAboutSection(
     channelLogin: String,
     channel: ChannelInfo?,
     streamInfo: StreamInfo?,
+    chat: List<ChatMessage>,
 ) {
     val c = PureTvTheme.colors
+    val showStats = remember { koin.get<ViewPrefsStore>() }.prefs.collectAsState().value.look.showStats
     val name = channel?.displayName ?: channelLogin
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -761,6 +764,14 @@ private fun StreamAboutSection(
                     }
                 }
             }
+            NerdStatsSection(
+                koin = koin,
+                channelLogin = channelLogin,
+                startedAtIso = streamInfo?.startedAt,
+                currentViewers = streamInfo?.viewerCount,
+                chat = chat,
+                panelColor = c.surfaceContainer,
+            )
             ExpressivePanel(modifier = Modifier.fillMaxWidth(), color = c.surfaceContainer, padding = 24.dp) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -793,7 +804,7 @@ private fun StreamAboutSection(
             }
             ChannelExtrasSection(koin = koin, channelLogin = channelLogin, panelColor = c.surfaceContainer)
         }
-        ChannelStatsPanel(koin = koin, channelLogin = channelLogin)
+        if (showStats) ChannelStatsPanel(koin = koin, channelLogin = channelLogin)
     }
 }
 

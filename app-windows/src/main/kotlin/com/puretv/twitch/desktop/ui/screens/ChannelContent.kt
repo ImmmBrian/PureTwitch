@@ -1,5 +1,6 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import com.puretv.twitch.desktop.data.ViewPrefsStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -129,6 +130,14 @@ fun ChannelContent(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
                     AboutPanel(channel?.description)
+                    NerdStatsSection(
+                        koin = koin,
+                        channelLogin = channelLogin,
+                        startedAtIso = null,
+                        currentViewers = null,
+                        chat = null,
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
                     ChannelExtrasSection(koin = koin, channelLogin = channelLogin, modifier = Modifier.padding(top = 16.dp))
                     Spacer(Modifier.height(28.dp))
                     channel?.id?.let { userId ->
@@ -141,7 +150,8 @@ fun ChannelContent(
                         modifier = Modifier.padding(top = 28.dp),
                     )
                 }
-                ChannelStatsPanel(koin = koin, channelLogin = channelLogin)
+                val showStats = remember { koin.get<ViewPrefsStore>() }.prefs.collectAsState().value.look.showStats
+                if (showStats) ChannelStatsPanel(koin = koin, channelLogin = channelLogin)
             }
 
             Spacer(Modifier.height(40.dp))

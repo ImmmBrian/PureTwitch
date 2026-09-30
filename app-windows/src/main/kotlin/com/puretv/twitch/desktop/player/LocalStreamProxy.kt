@@ -115,6 +115,12 @@ class LocalStreamProxy(
     private val variantFetches = AtomicInteger(0)
     private val variantBackupSwaps = AtomicInteger(0)
     private val variantAdSegmentsStripped = AtomicInteger(0)
+
+    /** Playlist refreshes where a stitched ad was swapped for a clean backup, since launch. */
+    val adSwapsSinceLaunch: Int get() = variantBackupSwaps.get()
+
+    /** Ad segments cut out of playlists (when every backup had the ad too), since launch. */
+    val adSegmentsStrippedSinceLaunch: Int get() = variantAdSegmentsStripped.get()
     private val variantSequenceNormalizations = AtomicInteger(0)
     private val variantTimelineSegmentsTrimmed = AtomicInteger(0)
     private val variantFailures = AtomicInteger(0)

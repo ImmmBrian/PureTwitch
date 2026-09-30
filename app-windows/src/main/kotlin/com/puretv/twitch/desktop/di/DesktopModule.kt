@@ -104,6 +104,8 @@ val desktopModule = module {
     }
     // Directory reads Helix can't do (category viewer totals, lowest-first stream scans).
     single { TwitchDirectoryGql(get()) }
+    // TwitchTracker's public 30-day channel summary, for Stats for nerds.
+    single { com.puretv.twitch.desktop.channel.TwitchTrackerClient(get()) }
     // Raid alerts over Twitch's EventSub WebSocket; needs the signed-in user's token.
     single { val holder = get<TokenHolder>(); RaidWatcher(get()) { holder.current() } }
     single { DiscoverRepository(get<TwitchApiClient>(), get<TwitchDirectoryGql>()) }
