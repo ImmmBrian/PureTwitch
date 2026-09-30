@@ -2,35 +2,62 @@
 
 <h1>PureTV</h1>
 
-**Live streams without the ads. On your PC, your phone, and your TV.**
+**Twitch on Windows, without the ads.**
 
-Ads get filtered out on your own device before the player ever sees them.
-No relay server, no account with us, no logging of what you watch.
-
-<br>
-
-[![Windows](https://img.shields.io/badge/Windows-Download-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/dhawal-ss/puretv/releases/latest)
-[![Android](https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/dhawal-ss/puretv/releases/download/android-latest/PureTV-for-Twitch-Android.apk)
-[![Android TV](https://img.shields.io/badge/Android_TV_&_Fire_TV-Download-6441A5?style=for-the-badge&logo=androidtv&logoColor=white)](https://github.com/dhawal-ss/puretv/releases/download/tv-latest/PureTV-FireTV-AndroidTV.apk)
+PureTV strips ads out of the stream on your own PC before the player sees them.
+You sign in with your own Twitch account, and nothing you watch gets logged anywhere.
 
 <br>
 
-<img src="docs/images/champions-player.png" alt="PureTV playing the Pokemon World Championships with ads blocked and chat open" width="900">
+[![Download for Windows](https://img.shields.io/badge/Windows-Download-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ImmmBrian/PureTwitch/releases/latest)
+
+<br>
+
+<img src="docs/images/champions-player.png" alt="PureTV playing a stream with ads blocked and chat open" width="900">
 
 </div>
 
 <br>
 
+## Install
+
+1. Open the [latest release](https://github.com/ImmmBrian/PureTwitch/releases/latest) and download **PureTV-Setup-x.x.x.exe** under Assets.
+2. Run it. Windows may show a blue "Windows protected your PC" screen because the app isn't code-signed. Click **More info**, then **Run anyway**.
+3. Open PureTV, go to **Account**, and sign in with your Twitch account.
+
+PureTV updates itself. When a new version comes out, it offers the update on launch and installs it in one click.
+
+<br>
+
 ## What you get
 
-|  | |
-|---|---|
-| **No ads** | Mid-rolls are stripped from the stream on your device. A small pill on the player tells you it is working. |
-| **Five themes** | Violet Dusk, Ember, Teal Deep, Pure Black and Midnight Forest. Each one re-tones the whole app, not just an accent. |
-| **Your follows, front and centre** | Live channels first, offline below, on every platform. |
-| **Chat beside the stream** | With emotes, on all three apps. |
-| **Updates itself** | It checks on launch and installs in one tap. No re-downloading. |
-| **Nothing phones home** | Sign-in goes straight to Twitch. Your session stays encrypted on your device. |
+**Watching**
+- No ads on live streams or past broadcasts
+- A mini player that keeps the stream going while you browse, which you can drag and snap to any corner
+- Pop out the player or chat into their own windows
+- Multi-view: watch several streams side by side
+- Audio-only mode, plus lower quality automatically while the stream sits in the mini player
+- Clips from any channel, and PureTV follows raids for you
+
+**Finding streams**
+- Home shows your live follows, what you watched recently, and a **Coming up** shelf of scheduled streams from channels you follow
+- Browse every category with live viewer counts, and pin the ones you like
+- Discover streams with filters for language, tags and viewer count, sorted high to low or low to high
+- Search finds channels, categories and settings in one place. Press **Ctrl+Shift+Space** anywhere to search without leaving the stream
+
+**Chat**
+- Chat that's easy to read, with emotes from Twitch, 7TV, BTTV and FFZ
+- Labels when chat is in slow mode, emote only, followers only or sub only
+- Click a name for a user card; ignore users and highlight words you care about
+
+**Channels**
+- Everything under the stream: title, tags, the channel's panels, chat rules and links
+- Stats for nerds: 30-day averages, peaks and follower growth, plus live chat stats. Hide it in Settings if you don't want it
+
+**Make it yours**
+- Five themes, any accent color, text size and density
+- Hide tabs you don't use, pick which tab the app opens on, and choose which shelves Home shows
+- Back up and restore all your settings
 
 <br>
 
@@ -38,103 +65,67 @@ No relay server, no account with us, no logging of what you watch.
 
 <img src="docs/images/browse.png" alt="Browsing categories" width="440">
 &nbsp;
-<img src="docs/images/settings.png" alt="Settings, with the five colour themes and the expressiveness dial" width="440">
-
-<sub>Browse every category, and make it look how you want</sub>
+<img src="docs/images/settings.png" alt="Settings with color themes" width="440">
 
 <br><br>
 
 <img src="docs/images/live-now.png" alt="The Live now grid" width="440">
 &nbsp;
-<img src="docs/images/channel.png" alt="A channel page with past broadcasts and stats" width="440">
-
-<sub>Everything live right now, and a channel's past broadcasts</sub>
-
-<br><br>
-
-<img src="docs/images/pokemongo-player.png" alt="A stream playing with chat beside it" width="900">
-
-<sub>Chat sits beside the stream, emotes and all</sub>
+<img src="docs/images/channel.png" alt="A channel page with past broadcasts" width="440">
 
 </div>
 
 <br>
 
-## Get it
+## Keyboard shortcuts
 
-<details>
-<summary><b>Windows</b></summary>
-
-<br>
-
-1. [Download the installer](https://github.com/dhawal-ss/puretv/releases/latest) and open it.
-2. If Windows shows a blue "Windows protected your PC" screen, click **More info**, then **Run anyway**. That only appears because the app is not code-signed yet.
-3. Open PureTV and sign in.
-
-Everything it needs, including the video engine, is in the installer.
-
-</details>
-
-<details>
-<summary><b>Android</b></summary>
+| Key | On a stream |
+|---|---|
+| **Ctrl+Shift+Space** | Search anywhere in the app |
+| **Space** | Play or pause |
+| **F** | Fullscreen |
+| **T** | Theater mode |
+| **C** | Show or hide chat |
+| **M** | Mute |
+| **Up / Down** | Volume |
+| **Esc** | Leave fullscreen or theater |
 
 <br>
 
-Sideloaded, not on the Play Store. Needs Android 8.0 or newer.
+## Following channels
 
-1. [Download the APK](https://github.com/dhawal-ss/puretv/releases/download/android-latest/PureTV-for-Twitch-Android.apk) on your phone and open it.
-2. Android will ask to allow installs from your browser the first time. Turn it on, then tap **Install**.
-3. Open PureTV, tap **Copy code**, then go to **twitch.tv/activate** and paste it.
-
-You also get Picture-in-Picture and a fill-to-edge fullscreen that uses the whole display including the camera cutout. Double-tap the video to toggle it.
-
-</details>
-
-<details>
-<summary><b>Android TV and Fire TV</b></summary>
+The Follow button shows whether you follow a channel on Twitch. Twitch doesn't let other apps follow or unfollow for you, so clicking it opens the channel on twitch.tv, where you click Follow yourself. PureTV picks up the change when you come back.
 
 <br>
 
-A separate build with a 10-foot layout you drive entirely with the remote. It installs through the free **Downloader** app by AFTVnews.
+## Privacy
 
-1. Install **Downloader** on your TV, from the Amazon Appstore or Google Play, and open it.
-2. First time only, your TV has to allow installs from Downloader. Fire TV prompts you. On Google TV it is under *Settings, Apps, Security & restrictions, Unknown sources*.
-3. Rather than pecking out a long URL with the remote, get a short code: on your phone open **[aftv.news](https://aftv.news)**, paste the link below, and it gives you a 6 or 7 digit code. Type that into Downloader and press Go.
-
-   ```
-   https://github.com/dhawal-ss/puretv/releases/download/tv-latest/PureTV-FireTV-AndroidTV.apk
-   ```
-
-   The link is permanent, so one code keeps working for every future release.
-4. Choose **Install**, then open PureTV and sign in: scan the QR with your phone, or go to **twitch.tv/activate** and type the big code on screen.
-
-**Remote controls:** D-pad to move, Select to open, Back to go back. On a stream, Left or Right shows chat, Play/Pause pauses, and Fast-Forward or Rewind changes quality.
-
-</details>
-
-<br>
-
-> [!NOTE]
-> The Android and TV builds are signed with a development key, so your device will call them apps from an "unknown source". That is just how sideloading works.
+- You sign in with your own Twitch account through Twitch's official sign-in page. PureTV never sees your password.
+- Your login stays encrypted on your PC.
+- The ad blocking runs on your PC. No relay server sits between you and Twitch.
 
 <br>
 
 ## Build it yourself
 
-Kotlin Multiplatform. A shared `core` module holds the API client, sign-in, ad-block engine and chat; each app builds its own UI on top. Windows uses Compose Multiplatform with VLC, Android and TV use Jetpack Compose with ExoPlayer.
+Kotlin Multiplatform with Compose for Desktop and VLC. The shared `core` module holds the Twitch API client, sign-in, chat and the ad-block engine.
 
 ```bash
-./gradlew :app-windows:run          # desktop, needs JDK 17 and VLC
-./gradlew :app-android:assembleDebug
-./gradlew :app-tv:assembleDebug
+./gradlew :app-windows:run    # needs JDK 17 and VLC
 ```
 
-Full setup, signing and release instructions live in **[docs/DEVELOPING.md](docs/DEVELOPING.md)**.
+Setup details live in [docs/DEVELOPING.md](docs/DEVELOPING.md).
 
-The ad-block engine is a Kotlin port of [pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions) (`vaft`). The upstream version and hash it tracks are pinned in **[docs/ADBLOCK-REFERENCE.md](docs/ADBLOCK-REFERENCE.md)**; no third-party script is vendored, bundled or executed by any build.
+<br>
+
+## Credits
+
+This is a Windows-focused build of [dhawal-ss/puretv](https://github.com/dhawal-ss/puretv), with its own features on top. The ad-block engine is a Kotlin port of [pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions) (`vaft`); [docs/ADBLOCK-REFERENCE.md](docs/ADBLOCK-REFERENCE.md) pins the upstream version it tracks.
+
+PureTV isn't affiliated with or endorsed by Twitch.
 
 <br>
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Issues and pull requests are very welcome.
+MIT, see [LICENSE](LICENSE).
