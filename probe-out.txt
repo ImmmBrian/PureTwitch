@@ -1,9 +1,8 @@
 === no-secret
-{"status":400,"message":"missing client secret"}
+{"status":400,"message":"Invalid refresh token"}
 
 === placeholder-secret
-{"status":403,"message":"invalid client secret"}
+{"status":400,"message":"Invalid refresh token"}
 
 === device
-{"status":400,"message":"missing client secret"}
-
+{"device_code":"1clh3iOqNvq6UgVyVDQlKjPKbvBawG8DO7AhPTav","expires_in":1800,"interval":5,"user_code":"GWWYQSSY","verification_uri":"https://www.twitch.tv/activate?device-code=GWWYQSSY"}
