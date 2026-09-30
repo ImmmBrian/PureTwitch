@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
@@ -85,7 +87,14 @@ import com.puretv.twitch.core.model.StreamQuality
 import com.puretv.twitch.core.model.UpscalingMode
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.player.DesktopPlayer
-import com.puretv.twitch.desktop.player.VlcPlayerView
+import com.puretv.twitch.desktop.discover.formatUptime
+import com.puretv.twitch.desktop.discover.languageFor
+import com.puretv.twitch.core.model.ChannelInfo
+import com.puretv.twitch.desktop.ui.MiniPlayer
+import com.puretv.twitch.desktop.ui.PlaybackHost
+import com.puretv.twitch.desktop.ui.SlotKind
+import com.puretv.twitch.desktop.ui.VideoSlot
+import com.puretv.twitch.desktop.ui.components.ExpressivePanel
 import com.puretv.twitch.desktop.ui.LocalAppShell
 import com.puretv.twitch.desktop.ui.PlayerMode
 import com.puretv.twitch.desktop.ui.StreamViewModel
@@ -115,7 +124,6 @@ import com.puretv.twitch.desktop.ui.components.expressiveClickable
 import com.puretv.twitch.desktop.ui.components.expressiveSurface
 import com.puretv.twitch.desktop.ui.components.formatViewerCount
 import com.puretv.twitch.core.emotes.PickableEmote
-import com.puretv.twitch.desktop.ui.rememberDesktopViewModel
 import com.puretv.twitch.desktop.ui.theme.PureTvMotion
 import com.puretv.twitch.desktop.ui.theme.PureTvTheme
 import com.puretv.twitch.desktop.ui.theme.PureTvType
@@ -126,7 +134,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import org.koin.core.Koin
-import org.koin.core.parameter.parametersOf
 import java.awt.KeyEventDispatcher
 import java.awt.KeyboardFocusManager
 import java.awt.event.KeyEvent
@@ -152,10 +159,16 @@ private val CHAT_PANEL_RADIUS = 24.dp
  *   F3     upscaling stats (mpv)  Esc    exit immersive
  */
 @Composable
-fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onRequestSignIn: () -> Unit = {}) {
-    val viewModel = rememberDesktopViewModel(channelLogin) {
-        koin.get<StreamViewModel> { parametersOf(channelLogin) }
-    }
+fun StreamContent(
+    koin: Koin,
+    host: PlaybackHost,
+    viewModel: StreamViewModel,
+    channelLogin: String,
+    onBack: () -> Unit,
+    onRequestSignIn: () -> Unit = {},
+) {
+    // The ViewModel is owned by PlaybackHost, not this screen, so playback and chat
+    // keep running in the mini player after this screen leaves composition.
     val state by viewModel.state.collectAsState()
     val isFollowed by viewModel.isFollowed.collectAsState()
     val vlcPlayer = remember { koin.get<DesktopPlayer>() }
@@ -318,125 +331,175 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
     ) {
         Row(Modifier.fillMaxSize()) {
             // ── Player + controls column ───────────────────────────────────────
-            Column(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(groundPad),
-            ) {
-                // Top bar: always in DEFAULT, slides up when idle in THEATER/FULLSCREEN
-                AnimatedVisibility(
-                    visible = controlsVisible || mode == PlayerMode.DEFAULT,
-                    enter = slideInVertically { -it } + fadeIn(),
-                    exit = slideOutVertically { -it } + fadeOut(),
+            // In DEFAULT mode the column scrolls: the first screenful is the player
+            // exactly as before, and the channel's About section sits below it. The
+            // video can't be clipped (it's a native window), so as soon as the page
+            // scrolls it docks into a mini player in the corner instead of sliding
+            // under the title bar; scrolling back to the top restores it.
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                val viewportHeight = maxHeight
+                val pageScroll = rememberScrollState()
+                val docked = !immersive && pageScroll.value > 0
+                LaunchedEffect(immersive) { if (immersive) pageScroll.scrollTo(0) }
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(pageScroll, enabled = !immersive),
                 ) {
-                    TopBar(
-                        mode = mode,
-                        channelName = state.channel?.displayName ?: channelLogin,
-                        avatarUrl = state.channel?.profileImageUrl,
-                        streamInfo = state.streamInfo,
-                        adBlockStatus = state.adBlockStatus,
-                        isFollowed = isFollowed,
-                        canFollow = state.channel != null,
-                        onToggleFollow = viewModel::toggleFollow,
-                        onBack = onBack,
-                        radius = panelRadius,
-                    )
-                }
-
-                // Video panel + playback settings menu, grouped as ONE child of the
-                // outer spacedBy so the gap above/below this pair stays a single
-                // groundPad regardless of whether the settings menu is mounted.
-                // Nesting it here (rather than as a sibling of top/controls bars)
-                // avoids a phantom extra gap around its zero-height collapsed state.
-                Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    // Player surface: never unmounted (see VlcPlayerView docs). The
-                    // heavyweight AWT Canvas paints above Compose and ignores any
-                    // clip Compose applies, so this box stays square-cornered: a
-                    // rounded clip here would be cosmetic on the Compose layer only
-                    // and invisible once real video frames cover it.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .background(Color.Black),
-                        contentAlignment = Alignment.Center,
+                    Column(
+                        modifier = Modifier.fillMaxWidth().height(viewportHeight),
+                        verticalArrangement = Arrangement.spacedBy(groundPad),
                     ) {
-                        when {
-                            // A stream-level fatal error (e.g. the local proxy port is in use)
-                            // takes priority: the player never even got a URL, so show the
-                            // explanation instead of an endless "Loading…".
-                            state.fatalError != null -> Text(
-                                state.fatalError!!,
-                                color = c.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(24.dp),
+                        // Top bar: always in DEFAULT, slides up when idle in THEATER/FULLSCREEN
+                        AnimatedVisibility(
+                            visible = controlsVisible || mode == PlayerMode.DEFAULT,
+                            enter = slideInVertically { -it } + fadeIn(),
+                            exit = slideOutVertically { -it } + fadeOut(),
+                        ) {
+                            TopBar(
+                                mode = mode,
+                                channelName = state.channel?.displayName ?: channelLogin,
+                                avatarUrl = state.channel?.profileImageUrl,
+                                streamInfo = state.streamInfo,
+                                adBlockStatus = state.adBlockStatus,
+                                isFollowed = isFollowed,
+                                canFollow = state.channel != null,
+                                onToggleFollow = viewModel::toggleFollow,
+                                onBack = onBack,
+                                radius = panelRadius,
                             )
-                            // Surface a player error whenever nothing is actively playing.
-                            // Covers an unavailable engine (e.g. "switch back to VLC"), an
-                            // mpv init failure, and a failed stream start (bad URL). The
-                            // error self-clears on recovery (playing/file-loaded sets error=null).
-                            playerStatus.error != null && !playerStatus.isPlaying && !playerStatus.isBuffering -> Text(
-                                playerStatus.error!!,
-                                color = c.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(24.dp),
-                            )
-                            state.playableUrl != null -> VlcPlayerView(
-                                vlcPlayer = vlcPlayer,
-                                modifier = Modifier.fillMaxSize(),
-                                // The heavyweight video surface eats mouse events; bridge
-                                // them back so moving the mouse reveals the controls,
-                                // including in fullscreen, where the surface covers all.
-                                onUserActivity = { resetControls() },
-                            )
-                            else -> Text(
-                                if (state.isLoading) "Loading stream…" else "This channel is offline.",
-                                color = c.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyLarge,
+                        }
+
+                        // Video panel + playback settings menu, grouped as ONE child of the
+                        // outer spacedBy so the gap above/below this pair stays a single
+                        // groundPad regardless of whether the settings menu is mounted.
+                        // Nesting it here (rather than as a sibling of top/controls bars)
+                        // avoids a phantom extra gap around its zero-height collapsed state.
+                        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            // Player surface: never unmounted (see VlcPlayerView docs). The
+                            // heavyweight AWT Canvas paints above Compose and ignores any
+                            // clip Compose applies, so this box stays square-cornered: a
+                            // rounded clip here would be cosmetic on the Compose layer only
+                            // and invisible once real video frames cover it.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .background(Color.Black),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                when {
+                                    // A stream-level fatal error (e.g. the local proxy port is in use)
+                                    // takes priority: the player never even got a URL, so show the
+                                    // explanation instead of an endless "Loading…".
+                                    state.fatalError != null -> Text(
+                                        state.fatalError!!,
+                                        color = c.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.padding(24.dp),
+                                    )
+                                    // Surface a player error whenever nothing is actively playing.
+                                    // Covers an unavailable engine (e.g. "switch back to VLC"), an
+                                    // mpv init failure, and a failed stream start (bad URL). The
+                                    // error self-clears on recovery (playing/file-loaded sets error=null).
+                                    playerStatus.error != null && !playerStatus.isPlaying && !playerStatus.isBuffering -> Text(
+                                        playerStatus.error!!,
+                                        color = c.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.padding(24.dp),
+                                    )
+                                    state.playableUrl != null && docked -> Text(
+                                        "Playing in the mini player",
+                                        color = c.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    // The video surface itself lives in PlaybackHost's overlay and is
+                                    // positioned over this slot.
+                                    state.playableUrl != null -> VideoSlot(
+                                        host = host,
+                                        kind = SlotKind.FULL,
+                                        modifier = Modifier.fillMaxSize(),
+                                        // The heavyweight video surface eats mouse events; bridge
+                                        // them back so moving the mouse reveals the controls,
+                                        // including in fullscreen, where the surface covers all.
+                                        onActivity = { resetControls() },
+                                        // ...and the wheel, so scrolling over the video still
+                                        // reaches the About section below.
+                                        onWheel = { w ->
+                                            if (currentMode == PlayerMode.DEFAULT) scope.launch { pageScroll.scrollBy(w * 100f) }
+                                        },
+                                    )
+                                    else -> Text(
+                                        if (state.isLoading) "Loading stream…" else "This channel is offline.",
+                                        color = c.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                            }
+
+                            // Playback menu: lives in the Column (NOT over the video; the
+                            // heavyweight Canvas paints above Compose), between video and controls.
+                            // Opening it pushes the video up, the same way the controls bar does.
+                            AnimatedVisibility(
+                                visible = settingsMenuOpen,
+                                enter = expandVertically() + fadeIn(),
+                                exit = shrinkVertically() + fadeOut(),
+                            ) {
+                                PlayerSettingsMenu(
+                                    currentQuality = state.currentQuality,
+                                    onQualitySelected = viewModel::setQuality,
+                                    upscalingMode = appSettings.upscalingMode,
+                                    onUpscalingSelected = viewModel::setUpscaling,
+                                    scalingEnabled = vlcPlayer.supportsUpscaling,
+                                    backend = appSettings.playbackBackend,
+                                    onBackendSelected = viewModel::setPlaybackBackend,
+                                )
+                            }
+                        }
+
+                        // Controls bar: always in DEFAULT, slides down when idle in THEATER/FULLSCREEN
+                        AnimatedVisibility(
+                            visible = controlsVisible || mode == PlayerMode.DEFAULT,
+                            enter = slideInVertically { it } + fadeIn(),
+                            exit = slideOutVertically { it } + fadeOut(),
+                        ) {
+                            PlaybackControls(
+                                isPlaying = playerStatus.isPlaying,
+                                volume = playerStatus.volume,
+                                isMuted = playerStatus.isMuted,
+                                settingsOpen = settingsMenuOpen,
+                                mode = mode,
+                                isChatOpen = isChatOpen,
+                                onTogglePlayPause = viewModel::togglePlayPause,
+                                onVolumeChange = viewModel::setVolume,
+                                onToggleMute = viewModel::toggleMute,
+                                onToggleSettings = { settingsMenuOpen = !settingsMenuOpen },
+                                onToggleChat = { shell.toggleChat() },
+                                onToggleTheater = { shell.setPlayerMode(if (mode == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER) },
+                                onToggleFullscreen = { shell.setPlayerMode(if (mode == PlayerMode.FULLSCREEN) PlayerMode.DEFAULT else PlayerMode.FULLSCREEN) },
+                                radius = panelRadius,
                             )
                         }
                     }
 
-                    // Playback menu: lives in the Column (NOT over the video; the
-                    // heavyweight Canvas paints above Compose), between video and controls.
-                    // Opening it pushes the video up, the same way the controls bar does.
-                    AnimatedVisibility(
-                        visible = settingsMenuOpen,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut(),
-                    ) {
-                        PlayerSettingsMenu(
-                            currentQuality = state.currentQuality,
-                            onQualitySelected = viewModel::setQuality,
-                            upscalingMode = appSettings.upscalingMode,
-                            onUpscalingSelected = viewModel::setUpscaling,
-                            scalingEnabled = vlcPlayer.supportsUpscaling,
-                            backend = appSettings.playbackBackend,
-                            onBackendSelected = viewModel::setPlaybackBackend,
+                    if (!immersive) {
+                        Spacer(Modifier.height(8.dp))
+                        StreamAboutSection(
+                            koin = koin,
+                            channelLogin = channelLogin,
+                            channel = state.channel,
+                            streamInfo = state.streamInfo,
                         )
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
 
-                // Controls bar: always in DEFAULT, slides down when idle in THEATER/FULLSCREEN
-                AnimatedVisibility(
-                    visible = controlsVisible || mode == PlayerMode.DEFAULT,
-                    enter = slideInVertically { it } + fadeIn(),
-                    exit = slideOutVertically { it } + fadeOut(),
-                ) {
-                    PlaybackControls(
-                        isPlaying = playerStatus.isPlaying,
-                        volume = playerStatus.volume,
-                        isMuted = playerStatus.isMuted,
-                        settingsOpen = settingsMenuOpen,
-                        mode = mode,
-                        isChatOpen = isChatOpen,
-                        onTogglePlayPause = viewModel::togglePlayPause,
-                        onVolumeChange = viewModel::setVolume,
-                        onToggleMute = viewModel::toggleMute,
-                        onToggleSettings = { settingsMenuOpen = !settingsMenuOpen },
-                        onToggleChat = { shell.toggleChat() },
-                        onToggleTheater = { shell.setPlayerMode(if (mode == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER) },
-                        onToggleFullscreen = { shell.setPlayerMode(if (mode == PlayerMode.FULLSCREEN) PlayerMode.DEFAULT else PlayerMode.FULLSCREEN) },
-                        radius = panelRadius,
+                if (docked) {
+                    MiniPlayer(
+                        host = host,
+                        player = vlcPlayer,
+                        onExpand = { scope.launch { pageScroll.animateScrollTo(0) } },
+                        onClose = null,
+                        expandIsScrollTop = true,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                     )
                 }
             }
@@ -504,6 +567,92 @@ fun StreamContent(koin: Koin, channelLogin: String, onBack: () -> Unit, onReques
                 }
             }
         }
+    }
+}
+
+// ── About (below the player) ──────────────────────────────────────────────────
+
+/**
+ * What Twitch shows under a stream: the full title, category, uptime, tags, then
+ * the channel's bio, with the audience stats panel alongside. Only reachable by
+ * scrolling down, so the first screenful stays all player.
+ */
+@Composable
+private fun StreamAboutSection(
+    koin: Koin,
+    channelLogin: String,
+    channel: ChannelInfo?,
+    streamInfo: StreamInfo?,
+) {
+    val c = PureTvTheme.colors
+    val name = channel?.displayName ?: channelLogin
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (streamInfo != null) {
+                ExpressivePanel(modifier = Modifier.fillMaxWidth(), color = c.surfaceContainer, padding = 24.dp) {
+                    Column {
+                        Text(
+                            streamInfo.title.ifBlank { "Untitled stream" },
+                            style = MaterialTheme.typography.titleLarge,
+                            color = c.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        val meta = listOfNotNull(
+                            streamInfo.gameName.takeIf { it.isNotBlank() },
+                            "${formatViewerCount(streamInfo.viewerCount)} viewers",
+                            formatUptime(streamInfo.startedAt)?.let { "live for $it" },
+                            languageFor(streamInfo.language)?.label,
+                        ).joinToString("  ·  ")
+                        Text(meta, style = PureTvType.data, color = c.primary)
+                        if (streamInfo.tags.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                streamInfo.tags.forEach { tag ->
+                                    Text(
+                                        tag,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = c.onSecondaryContainer,
+                                        modifier = Modifier
+                                            .clip(PureTvTheme.shapes.pillShape)
+                                            .background(c.secondaryContainer)
+                                            .padding(horizontal = 12.dp, vertical = 5.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ExpressivePanel(modifier = Modifier.fillMaxWidth(), color = c.surfaceContainer, padding = 24.dp) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Avatar(displayName = name, imageUrl = channel?.profileImageUrl, size = 56)
+                        Column {
+                            Text("About $name", style = MaterialTheme.typography.titleLarge, color = c.onSurface)
+                            val kind = when (channel?.broadcasterType) {
+                                "partner" -> "Twitch Partner"
+                                "affiliate" -> "Twitch Affiliate"
+                                else -> null
+                            }
+                            val since = channel?.createdAt?.takeIf { it.length >= 4 }?.let { "on Twitch since ${it.take(4)}" }
+                            val sub = listOfNotNull(kind, since).joinToString("  ·  ")
+                            if (sub.isNotEmpty()) Text(sub, style = PureTvType.data, color = c.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    val bio = channel?.description?.takeIf { it.isNotBlank() }
+                    Text(
+                        bio ?: "This channel hasn't written a bio yet.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (bio != null) c.onSurfaceVariant else c.outline,
+                    )
+                }
+            }
+        }
+        ChannelStatsPanel(koin = koin, channelLogin = channelLogin)
     }
 }
 

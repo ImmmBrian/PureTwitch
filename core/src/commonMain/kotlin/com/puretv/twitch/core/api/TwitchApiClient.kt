@@ -159,6 +159,42 @@ class TwitchApiClient(
         return resp.data
     }
 
+    /**
+     * GET /streams, one page at a time, with optional category and language
+     * filters. Helix always orders by viewer count, highest first. [after] is the
+     * cursor from the previous page; the returned [StreamPage.cursor] is null on
+     * the last page. Used by Discover, which scans several pages client-side.
+     */
+    suspend fun getStreamsPage(
+        gameIds: List<String> = emptyList(),
+        languages: List<String> = emptyList(),
+        first: Int = 100,
+        after: String? = null,
+    ): StreamPage {
+        val resp: HelixPagedEnvelope<StreamInfo> = withRateLimitRetry {
+            authedClient().get("${TwitchConfig.API_BASE}/streams") {
+                header("Client-Id", TwitchConfig.CLIENT_ID)
+                tokenProvider()?.let { header("Authorization", "Bearer $it") }
+                gameIds.forEach { parameter("game_id", it) }
+                languages.forEach { parameter("language", it) }
+                parameter("type", "live")
+                parameter("first", first.coerceIn(1, 100).toString())
+                if (!after.isNullOrBlank()) parameter("after", after)
+            }.body()
+        }
+        return StreamPage(resp.data, resp.pagination.cursor?.takeIf { it.isNotBlank() })
+    }
+
+    /** GET /search/categories — categories whose name matches [query]. */
+    suspend fun searchCategories(query: String, first: Int = 10): List<GameInfo> {
+        if (query.isBlank()) return emptyList()
+        val resp: HelixEnvelope<GameInfo> = get(
+            "/search/categories",
+            mapOf("query" to query.trim(), "first" to first.coerceIn(1, 100).toString()),
+        )
+        return resp.data
+    }
+
     /** GET /search/channels — search by query string. */
     suspend fun searchChannels(query: String, liveOnly: Boolean = false): List<ChannelSearchResult> {
         val resp: HelixEnvelope<ChannelSearchResult> = get(
@@ -282,6 +318,9 @@ data class ChatBadgeSetDto(
     @SerialName("set_id") val setId: String = "",
     val versions: List<ChatBadgeVersionDto> = emptyList(),
 )
+
+/** One page of live streams plus the cursor for the next page (null when no more). */
+data class StreamPage(val streams: List<StreamInfo>, val cursor: String?)
 
 @Serializable
 data class HelixPagination(val cursor: String? = null)

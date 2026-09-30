@@ -13,8 +13,10 @@ import java.awt.Canvas
 import java.awt.Color
 import java.awt.event.HierarchyEvent
 import java.awt.event.HierarchyListener
+import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.MouseMotionAdapter
+import java.awt.event.MouseWheelEvent
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 
@@ -55,12 +57,19 @@ import javax.swing.SwingUtilities
  *
  * @param onUserActivity invoked on real cursor movement over the video surface
  *   (used to un-hide the auto-hiding player controls).
+ * @param onClick invoked on a mouse click on the video (the mini player uses it
+ *   to expand back to the full stream page). The Canvas swallows clicks before
+ *   Compose sees them, so this is the only way to react to one.
+ * @param onWheel invoked with the wheel rotation (positive = scroll down) when the
+ *   user scrolls over the video, so the page under it can still scroll.
  */
 @Composable
 fun VlcPlayerView(
     vlcPlayer: DesktopPlayer,
     modifier: Modifier = Modifier,
     onUserActivity: () -> Unit = {},
+    onClick: () -> Unit = {},
+    onWheel: (Float) -> Unit = {},
 ) {
     // Override removeNotify so the backend releases this surface BEFORE the native
     // peer (HWND) is destroyed. mpv binds its `wid` once and keeps rendering into
@@ -112,6 +121,25 @@ fun VlcPlayerView(
         }
         canvas.addMouseMotionListener(motionListener)
         onDispose { canvas.removeMouseMotionListener(motionListener) }
+    }
+
+    val currentClick by rememberUpdatedState(onClick)
+    val currentWheel by rememberUpdatedState(onWheel)
+    DisposableEffect(canvas) {
+        val clickListener = object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.button == MouseEvent.BUTTON1) currentClick()
+            }
+        }
+        val wheelListener = java.awt.event.MouseWheelListener { e: MouseWheelEvent ->
+            currentWheel(e.preciseWheelRotation.toFloat())
+        }
+        canvas.addMouseListener(clickListener)
+        canvas.addMouseWheelListener(wheelListener)
+        onDispose {
+            canvas.removeMouseListener(clickListener)
+            canvas.removeMouseWheelListener(wheelListener)
+        }
     }
 
     DisposableEffect(vlcPlayer, canvas) {

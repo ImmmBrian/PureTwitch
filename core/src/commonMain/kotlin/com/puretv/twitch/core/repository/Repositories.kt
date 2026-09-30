@@ -86,7 +86,10 @@ class ChannelRepository(private val apiClient: TwitchApiClient) {
 
     suspend fun search(query: String, liveOnly: Boolean = false) = apiClient.searchChannels(query, liveOnly)
 
-    suspend fun topGames(): List<GameInfo> = apiClient.getTopGames()
+    suspend fun topGames(first: Int = 20): List<GameInfo> = apiClient.getTopGames(first)
+
+    /** Categories whose name matches [query] (Discover's category picker). */
+    suspend fun searchCategories(query: String): List<GameInfo> = apiClient.searchCategories(query)
 }
 
 class UserRepository(private val apiClient: TwitchApiClient) {

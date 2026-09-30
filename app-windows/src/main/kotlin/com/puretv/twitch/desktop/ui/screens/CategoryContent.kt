@@ -35,6 +35,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.puretv.twitch.core.model.StreamInfo
+import com.puretv.twitch.desktop.data.ListSort
+import com.puretv.twitch.desktop.data.ViewPrefsStore
 import com.puretv.twitch.desktop.ui.CategoryViewModel
 import com.puretv.twitch.desktop.ui.rememberDesktopViewModel
 import com.puretv.twitch.desktop.ui.components.CoverImage
@@ -81,6 +83,10 @@ fun CategoryContent(
     }
     val state by viewModel.state.collectAsState()
     val displayName = state.gameName.ifBlank { gameName }
+    val prefs by remember { koin.get<ViewPrefsStore>() }.prefs.collectAsState()
+    val streams = remember(state.streams, prefs.listSort) {
+        if (prefs.listSort == ListSort.VIEWERS) state.streams.sortedByDescending { it.viewerCount } else state.streams
+    }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(4),
@@ -120,7 +126,7 @@ fun CategoryContent(
                 )
             }
 
-            else -> items(state.streams, key = { it.id }) { stream ->
+            else -> items(streams, key = { it.id }) { stream ->
                 CategoryStreamCard(stream = stream, onClick = { onOpenChannel(stream.userLogin) })
             }
         }

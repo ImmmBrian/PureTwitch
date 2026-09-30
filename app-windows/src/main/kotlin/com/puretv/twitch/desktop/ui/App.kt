@@ -29,7 +29,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +65,7 @@ import coil3.request.crossfade
 import okio.Path.Companion.toOkioPath
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.data.WatchProgressStore
+import com.puretv.twitch.desktop.player.DesktopPlayer
 import com.puretv.twitch.desktop.ui.emotes.EmoteFrameCache
 import com.puretv.twitch.desktop.ui.emotes.LocalEmoteAnimation
 import com.puretv.twitch.desktop.ui.emotes.LocalEmoteFrameCache
@@ -78,6 +81,7 @@ import com.puretv.twitch.desktop.ui.components.expressiveClickable
 import com.puretv.twitch.desktop.ui.screens.BrowseContent
 import com.puretv.twitch.desktop.ui.screens.CategoryContent
 import com.puretv.twitch.desktop.ui.screens.ChannelContent
+import com.puretv.twitch.desktop.ui.screens.DiscoverContent
 import com.puretv.twitch.desktop.ui.screens.FollowingContent
 import com.puretv.twitch.desktop.ui.screens.HomeContent
 import com.puretv.twitch.desktop.ui.screens.LoginContent
@@ -106,6 +110,7 @@ enum class Destination(val label: String, val icon: ImageVector, val outlineIcon
     HOME("Home", ExpressiveIcons.Home, ExpressiveIcons.HomeOutlined),
     FOLLOWING("Following", ExpressiveIcons.Following, ExpressiveIcons.FollowingOutlined),
     BROWSE("Browse", ExpressiveIcons.Browse, ExpressiveIcons.BrowseOutlined),
+    DISCOVER("Discover", ExpressiveIcons.Discover, ExpressiveIcons.DiscoverOutlined),
     SEARCH("Search", ExpressiveIcons.Search, ExpressiveIcons.SearchOutlined),
     SETTINGS("Settings", ExpressiveIcons.Settings, ExpressiveIcons.SettingsOutlined),
     ACCOUNT("Account", ExpressiveIcons.Account, ExpressiveIcons.AccountOutlined),
@@ -175,11 +180,47 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
             val c = PureTvTheme.colors
             val shapes = PureTvTheme.shapes
 
+            // The live stream outlives the stream page: leave it and it keeps
+            // playing in the mini player (see PlaybackHost).
+            val playbackHost = remember { PlaybackHost(koin) }
+            val player = remember { koin.get<DesktopPlayer>() }
+            DisposableEffect(playbackHost) { onDispose { playbackHost.close() } }
+
+            fun openStream(login: String) {
+                playbackHost.open(login)
+                route = Route.Stream(login)
+            }
+
+            // A VOD needs the one shared player, so the live session closes first.
+            // The route switch waits two frames so the live video surface is fully
+            // removed before the VOD's surface attaches (mpv binds one window at a
+            // time and would otherwise tear the new one down).
+            var pendingVod by remember { mutableStateOf<VodLaunch?>(null) }
+            fun openVod(launch: VodLaunch) {
+                if (playbackHost.active != null) {
+                    playbackHost.close()
+                    pendingVod = launch
+                } else {
+                    route = Route.Vod(launch)
+                }
+            }
+            LaunchedEffect(pendingVod) {
+                val launch = pendingVod ?: return@LaunchedEffect
+                withFrameNanos { }
+                withFrameNanos { }
+                route = Route.Vod(launch)
+                pendingVod = null
+            }
+
+            // Theater/fullscreen only make sense on the stream page.
+            LaunchedEffect(route) { if (route !is Route.Stream) shell.exitImmersive() }
+
             // The window ground is the DEEPEST surface in the ladder, so the rail and
             // the content pane read as two cards floating on it. That separation is
             // what the 8dp gutter and the 28dp pane corners are for; without the
             // darker ground they would just look like arbitrary rounding.
             Surface(modifier = Modifier.fillMaxSize(), color = c.surfaceLowest) {
+              Box(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     if (shell.playerMode != PlayerMode.FULLSCREEN) {
                         CustomTitleBar(shell = shell, onClose = onClose, awtWindow = awtWindow)
@@ -236,7 +277,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                     route = Route.Top
                                 },
                                 onOpenChannel = { login -> route = Route.Channel(login) },
-                                onResumeVod = { launch -> route = Route.Vod(launch) },
+                                onResumeVod = { launch -> openVod(launch) },
                                 onSignIn = {
                                     destination = Destination.ACCOUNT
                                     route = Route.Top
@@ -251,15 +292,26 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                 .background(c.surface),
                         ) {
                             when (val r = route) {
-                                is Route.Stream -> StreamContent(
-                                    koin = koin,
-                                    channelLogin = r.login,
-                                    onBack = { route = Route.Channel(r.login) },
-                                    onRequestSignIn = {
-                                        destination = Destination.ACCOUNT
-                                        route = Route.Top
-                                    },
-                                )
+                                is Route.Stream -> {
+                                    val session = playbackHost.active
+                                    if (session != null && session.login.equals(r.login, ignoreCase = true)) {
+                                        StreamContent(
+                                            koin = koin,
+                                            host = playbackHost,
+                                            viewModel = session.viewModel,
+                                            channelLogin = r.login,
+                                            onBack = { route = Route.Channel(r.login) },
+                                            onRequestSignIn = {
+                                                destination = Destination.ACCOUNT
+                                                route = Route.Top
+                                            },
+                                        )
+                                    } else {
+                                        // Reached a stream route without a session (e.g. the
+                                        // session was closed): start one.
+                                        LaunchedEffect(r.login) { playbackHost.open(r.login) }
+                                    }
+                                }
                                 is Route.Vod -> VodPlayerContent(
                                     koin = koin,
                                     launch = r.launch,
@@ -268,8 +320,8 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                 is Route.Channel -> ChannelContent(
                                     koin = koin,
                                     channelLogin = r.login,
-                                    onWatch = { route = Route.Stream(r.login) },
-                                    onPlayVod = { launch -> route = Route.Vod(launch) },
+                                    onWatch = { openStream(r.login) },
+                                    onPlayVod = { launch -> openVod(launch) },
                                     onBack = { route = Route.Top },
                                 )
                                 is Route.Category -> CategoryContent(
@@ -283,7 +335,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                     Destination.HOME -> HomeContent(
                                         koin = koin,
                                         onOpenChannel = { login -> route = Route.Channel(login) },
-                                        onResumeVod = { launch -> route = Route.Vod(launch) },
+                                        onResumeVod = { launch -> openVod(launch) },
                                     )
                                     Destination.FOLLOWING -> FollowingContent(
                                         koin = koin,
@@ -291,14 +343,31 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                         onSignIn = { destination = Destination.ACCOUNT },
                                     )
                                     Destination.BROWSE -> BrowseContent(koin = koin, onOpenCategory = { gameId, gameName -> route = Route.Category(gameId, gameName) })
+                                    Destination.DISCOVER -> DiscoverContent(koin = koin, onOpenChannel = { login -> route = Route.Channel(login) })
                                     Destination.SEARCH -> SearchContent(koin = koin, onOpenChannel = { login -> route = Route.Channel(login) })
                                     Destination.SETTINGS -> SettingsContent(koin = koin, onExit = onClose)
                                     Destination.ACCOUNT -> LoginContent(koin = koin)
                                 }
                             }
+
+                            // Off the stream page, a live session docks here.
+                            val docked = playbackHost.active
+                            if (docked != null && route !is Route.Stream && pendingVod == null) {
+                                MiniPlayer(
+                                    host = playbackHost,
+                                    player = player,
+                                    onExpand = { route = Route.Stream(docked.login) },
+                                    onClose = { playbackHost.close() },
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+                                )
+                            }
                         }
                     }
                 }
+
+                // Last child of the window-filling Box, so window coordinates line up.
+                VideoOverlay(host = playbackHost, player = player)
+              }
             }
         }
     }

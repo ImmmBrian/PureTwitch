@@ -12,12 +12,26 @@ plugins {
 // ── App version (single source of truth) ─────────────────────────────────────
 // Drives both the MSI `packageVersion` AND the generated AppBuildConfig the
 // in-app updater compares against GitHub Releases — so the two can never drift.
-val appVersion = "1.11.2"
+val appVersion = "1.12.0"
+
+// Which GitHub repo the in-app updater checks. GitHub Actions sets GITHUB_REPOSITORY
+// ("owner/repo") on every run, so a fork's CI builds automatically update from the
+// fork's own Releases instead of being overwritten by upstream's. Local builds fall
+// back to the upstream repo.
+val updateRepo: List<String> = (System.getenv("GITHUB_REPOSITORY") ?: "dhawal-ss/puretv")
+    .split("/")
+    .takeIf { it.size == 2 && it.all { part -> part.isNotBlank() } }
+    ?: listOf("dhawal-ss", "puretv")
 
 val generateAppBuildConfig by tasks.registering {
     val outDir = layout.buildDirectory.dir("generated/buildconfig/kotlin")
     outputs.dir(outDir)
     val versionValue = appVersion
+    val ownerValue = updateRepo[0]
+    val repoValue = updateRepo[1]
+    inputs.property("version", versionValue)
+    inputs.property("owner", ownerValue)
+    inputs.property("repo", repoValue)
     doLast {
         val pkgDir = outDir.get().dir("com/puretv/twitch/desktop").asFile
         pkgDir.mkdirs()
@@ -28,8 +42,8 @@ val generateAppBuildConfig by tasks.registering {
             |/** Generated from build.gradle.kts `appVersion` — do not edit by hand. */
             |object AppBuildConfig {
             |    const val VERSION = "$versionValue"
-            |    const val GITHUB_OWNER = "dhawal-ss"
-            |    const val GITHUB_REPO = "puretv"
+            |    const val GITHUB_OWNER = "$ownerValue"
+            |    const val GITHUB_REPO = "$repoValue"
             |}
             |
             """.trimMargin(),

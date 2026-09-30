@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.puretv.twitch.core.model.StreamInfo
 import com.puretv.twitch.desktop.data.FollowStore
+import com.puretv.twitch.desktop.data.ListSort
+import com.puretv.twitch.desktop.data.ViewPrefsStore
 import com.puretv.twitch.desktop.data.FollowedChannel
 import com.puretv.twitch.desktop.data.WatchProgress
 import com.puretv.twitch.desktop.data.WatchProgressStore
@@ -61,6 +63,7 @@ import com.puretv.twitch.desktop.ui.components.ExpressiveCard
 import com.puretv.twitch.desktop.ui.components.ExpressiveIcons
 import com.puretv.twitch.desktop.ui.components.LivePill
 import com.puretv.twitch.desktop.ui.components.SectionHeading
+import com.puretv.twitch.desktop.ui.components.SegmentedToggle
 import com.puretv.twitch.desktop.ui.components.ShieldPill
 import com.puretv.twitch.desktop.ui.components.SplitButton
 import com.puretv.twitch.desktop.ui.components.StreamCardSkeleton
@@ -106,6 +109,15 @@ fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLa
     val followStore = remember { koin.get<FollowStore>() }
     val followedChannels by followStore.followed.collectAsState()
 
+    // Shared with Browse and persisted. "Most viewers" re-sorts on every refresh,
+    // so the order holds even when Twitch's own ranking drifts from raw counts.
+    val prefsStore = remember { koin.get<ViewPrefsStore>() }
+    val prefs by prefsStore.prefs.collectAsState()
+    val sort = prefs.listSort
+    val topStreams = remember(state.topStreams, sort) {
+        if (sort == ListSort.VIEWERS) state.topStreams.sortedByDescending { it.viewerCount } else state.topStreams
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(4),
         modifier = Modifier.fillMaxSize(),
@@ -130,7 +142,7 @@ fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLa
             }
 
             else -> {
-                val hero = featuredStream(state.following, state.topStreams)
+                val hero = featuredStream(state.following, topStreams)
                 if (hero != null) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         val isFollowed = followedChannels.any { it.login.equals(hero.login, ignoreCase = true) }
@@ -200,11 +212,23 @@ fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLa
                     }
                 }
 
-                if (state.topStreams.isNotEmpty()) {
+                if (topStreams.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        SectionHeading(title = "Live now", modifier = Modifier.padding(top = 20.dp))
+                        Row(
+                            modifier = Modifier.padding(top = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            SectionHeading(title = "Live now", modifier = Modifier.weight(1f))
+                            SegmentedToggle(
+                                options = ListSort.entries,
+                                selected = sort,
+                                label = { it.label },
+                                onSelect = { prefsStore.setSort(it) },
+                                height = 40.dp,
+                            )
+                        }
                     }
-                    gridItems(state.topStreams, key = { "live_${it.id}" }) { stream ->
+                    gridItems(topStreams, key = { "live_${it.id}" }) { stream ->
                         StreamGridCard(
                             channelName = stream.userName,
                             avatarUrl = null,

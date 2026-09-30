@@ -11,6 +11,27 @@ release notes automatically.
 
 ---
 
+## 1.12.0 - 2026-09-30
+
+A mini player, a scrollable stream page, a new Discover tab, and viewer
+numbers on Browse.
+
+### New
+- **Mini player.** Leave a stream for Home, Browse or anywhere else and it keeps
+  playing in a small player in the corner. Click it to go back, or close it.
+- **Discover tab.** Filter live channels by category, language, viewer count,
+  how long they've been live, tags and title words, then browse the list.
+  Small-channel searches start from the bottom of the directory, so they turn
+  up streamers Twitch's own pages bury.
+- **Channel info under the stream.** Scroll down on a stream to read the full
+  title, tags, the channel's bio and its audience stats. The video moves to the
+  corner while you read.
+
+### Improved
+- **Browse shows viewers.** Each category shows how many people are watching.
+- **Sort by viewers.** Home and Browse can always sort highest viewers first.
+  The choice is remembered.
+
 ## 1.11.2 - 2026-09-01
 
 Windows catches up with a fix the phone and TV apps already shipped. Nothing

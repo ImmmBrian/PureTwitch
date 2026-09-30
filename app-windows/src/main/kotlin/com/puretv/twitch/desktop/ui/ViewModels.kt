@@ -186,9 +186,23 @@ data class BrowseUiState(
     /** Non-null when the load failed — lets the screen show an error + Retry instead of
      *  an empty grid that's indistinguishable from "no categories". */
     val error: String? = null,
-)
+    /** Live viewer total per category id. Filled in after the grid loads; a category
+     *  missing here simply shows no count (the lookup is best-effort). */
+    val viewers: Map<String, Int> = emptyMap(),
+) {
+    /** Highest viewer total first. Categories without a count keep Twitch's order, after the rest. */
+    fun gamesByViewers(): List<GameInfo> {
+        if (viewers.isEmpty()) return games
+        val (known, unknown) = games.partition { it.id in viewers }
+        return known.sortedByDescending { viewers[it.id] ?: 0 } + unknown
+    }
+}
 
-class BrowseViewModel(private val channelRepository: ChannelRepository) : DesktopViewModel() {
+class BrowseViewModel(
+    private val channelRepository: ChannelRepository,
+    /** Looks up viewer totals by category id (Twitch GraphQL). Defaults to none, for tests. */
+    private val viewerCounts: suspend (List<String>) -> Map<String, Int> = { emptyMap() },
+) : DesktopViewModel() {
     private val _state = MutableStateFlow(BrowseUiState())
     val state: StateFlow<BrowseUiState> = _state.asStateFlow()
 
@@ -198,10 +212,18 @@ class BrowseViewModel(private val channelRepository: ChannelRepository) : Deskto
     fun load() {
         scope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            runCatching { channelRepository.topGames() }
-                .onSuccess { games -> _state.update { it.copy(games = games, isLoading = false, error = null) } }
+            runCatching { channelRepository.topGames(first = 100) }
+                .onSuccess { games ->
+                    _state.update { it.copy(games = games, isLoading = false, error = null) }
+                    refreshViewers(games)
+                }
                 .onFailure { _state.update { it.copy(isLoading = false, error = "Couldn't load categories. Check your connection and try again.") } }
         }
+    }
+
+    private suspend fun refreshViewers(games: List<GameInfo>) {
+        val counts = runCatching { viewerCounts(games.map { it.id }) }.getOrDefault(emptyMap())
+        if (counts.isNotEmpty()) _state.update { it.copy(viewers = counts) }
     }
 }
 

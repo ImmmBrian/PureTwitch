@@ -15,6 +15,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
@@ -66,6 +70,8 @@ object ExpressiveIcons {
     val FollowingOutlined: ImageVector = Icons.Filled.FavoriteBorder
     val Browse: ImageVector = Icons.Filled.GridView
     val BrowseOutlined: ImageVector = Icons.Outlined.GridView
+    val Discover: ImageVector = Icons.Filled.Explore
+    val DiscoverOutlined: ImageVector = Icons.Outlined.Explore
     val Search: ImageVector = Icons.Filled.Search
     val SearchOutlined: ImageVector = Icons.Outlined.Search
     val Settings: ImageVector = Icons.Filled.Settings
@@ -106,6 +112,8 @@ object ExpressiveIcons {
     val Chat: ImageVector = Icons.AutoMirrored.Filled.Chat
     val Emote: ImageVector = Icons.Filled.Mood
     val Send: ImageVector = Icons.AutoMirrored.Filled.Send
+    val Expand: ImageVector = Icons.Filled.OpenInFull
+    val ScrollTop: ImageVector = Icons.Filled.VerticalAlignTop
 
     // Status / layout
     val Shield: ImageVector = Icons.Filled.Shield

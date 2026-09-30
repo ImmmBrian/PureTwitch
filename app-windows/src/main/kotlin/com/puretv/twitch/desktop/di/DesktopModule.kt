@@ -3,6 +3,11 @@ package com.puretv.twitch.desktop.di
 import com.puretv.twitch.desktop.auth.DesktopOAuthManager
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.data.FollowStore
+import com.puretv.twitch.desktop.data.ViewPrefsStore
+import com.puretv.twitch.desktop.discover.DiscoverRepository
+import com.puretv.twitch.desktop.discover.TwitchDirectoryGql
+import com.puretv.twitch.core.api.TwitchApiClient
+import com.puretv.twitch.core.repository.ChannelRepository
 import com.puretv.twitch.desktop.data.ViewerHistoryStore
 import com.puretv.twitch.desktop.data.WatchProgressStore
 import com.puretv.twitch.core.model.PlaybackBackend
@@ -18,6 +23,7 @@ import com.puretv.twitch.desktop.ui.BrowseViewModel
 import com.puretv.twitch.desktop.ui.CategoryViewModel
 import com.puretv.twitch.desktop.ui.ChannelStatsViewModel
 import com.puretv.twitch.desktop.ui.ChannelViewModel
+import com.puretv.twitch.desktop.ui.DiscoverViewModel
 import com.puretv.twitch.desktop.ui.FollowedRailViewModel
 import com.puretv.twitch.desktop.ui.HomeViewModel
 import com.puretv.twitch.desktop.ui.LoginViewModel
@@ -57,6 +63,8 @@ val desktopModule = module {
     single { DesktopSettingsStore(get()) }
     // Local "Following" list (the in-app library) — see FollowStore.
     single { FollowStore() }
+    // Browsing prefs: list sort order and the last Discover filters — see ViewPrefsStore.
+    single { ViewPrefsStore() }
     // Followed-rail data: real Twitch follows (paginated) ∪ local pins.
     single<FollowedChannelsSource> { FollowedChannelsService(get()) }
     // Per-VOD playback positions ("continue watching") — see WatchProgressStore.
@@ -91,7 +99,23 @@ val desktopModule = module {
             localPins = { follows.followed.value.map { FollowedRef(it.id, it.login, it.displayName) } },
         )
     }
-    factory { BrowseViewModel(get()) }
+    // Directory reads Helix can't do (category viewer totals, lowest-first stream scans).
+    single { TwitchDirectoryGql(get()) }
+    single { DiscoverRepository(get<TwitchApiClient>(), get<TwitchDirectoryGql>()) }
+    factory {
+        val gql = get<TwitchDirectoryGql>()
+        BrowseViewModel(get(), viewerCounts = { ids -> gql.gameViewerCounts(ids) })
+    }
+    factory {
+        val prefs = get<ViewPrefsStore>()
+        val channels = get<ChannelRepository>()
+        DiscoverViewModel(
+            repository = get(),
+            searchCategories = { q -> channels.searchCategories(q) },
+            initialFilters = prefs.prefs.value.discover,
+            persistFilters = { prefs.setDiscoverFilters(it) },
+        )
+    }
     // Category drill-down takes (gameId, gameName) from the tapped Browse card.
     factory { (gameId: String, gameName: String) -> CategoryViewModel(gameId, gameName, get()) }
     factory { SearchViewModel(get()) }
