@@ -123,6 +123,10 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${{ github.ref_name }}" -replace '^v',''
+          if ("${{ github.ref }}" -eq "refs/heads/release") {
+            $m = Select-String -Path app-windows\build.gradle.kts -Pattern '^val appVersion = "(.*)"'
+            if ($m) { $ver = $m.Matches[0].Groups[1].Value }
+          }
           if (-not $ver) { $ver = "0.0.0" }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "app-windows\installer\puretv.iss"
 
