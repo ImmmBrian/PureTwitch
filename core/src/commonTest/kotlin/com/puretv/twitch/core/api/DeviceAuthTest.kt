@@ -59,6 +59,16 @@ class DeviceAuthTest {
     }
 
     @Test
+    fun refreshForm_omits_placeholder_secret_for_public_client() {
+        // Desktop builds carry only the placeholder. Twitch rejects a wrong secret
+        // ("invalid client secret") even for a public client, so it must be left out.
+        val form = DeviceAuth.refreshForm("CID", "RT", TwitchConfig.PLACEHOLDER_CLIENT_SECRET).toMap()
+        assertFalse(form.containsKey("client_secret"))
+        assertFalse(DeviceAuth.refreshForm("CID", "RT", "").toMap().containsKey("client_secret"))
+        assertEquals("RT", form["refresh_token"])
+    }
+
+    @Test
     fun parseDeviceCode_reads_all_fields() {
         val body = """
             {"device_code":"DC","user_code":"ABCD-1234",

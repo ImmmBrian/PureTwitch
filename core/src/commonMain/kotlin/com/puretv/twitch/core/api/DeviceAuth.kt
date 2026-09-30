@@ -95,12 +95,16 @@ object DeviceAuth {
      * way.
      */
     fun refreshForm(clientId: String, refreshToken: String, clientSecret: String): List<Pair<String, String>> =
-        listOf(
-            "client_id" to clientId,
-            "client_secret" to clientSecret,
-            "grant_type" to "refresh_token",
-            "refresh_token" to refreshToken,
-        )
+        buildList {
+            add("client_id" to clientId)
+            // A PUBLIC client (the desktop build) has no secret. Sending the build
+            // placeholder makes Twitch answer "invalid client secret", so leave it out.
+            if (clientSecret.isNotBlank() && clientSecret != TwitchConfig.PLACEHOLDER_CLIENT_SECRET) {
+                add("client_secret" to clientSecret)
+            }
+            add("grant_type" to "refresh_token")
+            add("refresh_token" to refreshToken)
+        }
 
     suspend fun requestDeviceCode(
         http: HttpClient,

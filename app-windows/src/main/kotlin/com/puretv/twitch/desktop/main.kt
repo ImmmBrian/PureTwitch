@@ -44,8 +44,13 @@ fun main() {
     // Refresh a near-expired access token at startup so the session survives the
     // ~4h token lifetime instead of silently dying across restarts (audit F2).
     // Fire-and-forget on a background scope so it never blocks UI startup.
+    // Then keep checking while the app is open (and after the PC wakes from
+    // sleep), so a session left running past 4 hours stays signed in too.
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-        runCatching { settingsStore.refreshIfNeeded(koinApp.koin.get<HttpClient>()) }
+        while (true) {
+            runCatching { settingsStore.refreshIfNeeded(koinApp.koin.get<HttpClient>()) }
+            kotlinx.coroutines.delay(10 * 60_000L)
+        }
     }
 
     val vlcPlayer = koinApp.koin.get<DesktopPlayer>()

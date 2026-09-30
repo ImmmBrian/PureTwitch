@@ -313,7 +313,11 @@ class DesktopSettingsStore(
                     login = current.login,
                 )
             }
-            .onFailure { e -> if (e is TokenRefreshException) clearTokens() }
+            // Only a rejected refresh token ends the session. A client/config error
+            // ("invalid client secret", "missing client secret") is the build's fault,
+            // not the user's, and wiping the saved login for it forced a sign-in on
+            // every launch once the access token aged out.
+            .onFailure { e -> if (e is TokenRefreshException && isRevokedSession(e.message)) clearTokens() }
     }
 
     data class StoredTokensResult(
@@ -384,6 +388,12 @@ class DesktopSettingsStore(
             file.setWritable(true, true)
         }
     }
+}
+
+/** True when Twitch's refresh error means the saved login itself is dead (not a client setup problem). */
+internal fun isRevokedSession(message: String?): Boolean {
+    val m = message.orEmpty().lowercase()
+    return !m.contains("client")
 }
 
 /** Refresh the access token this many seconds before its declared expiry. */
