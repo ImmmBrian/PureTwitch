@@ -11,22 +11,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           exec > probe-out.txt 2>&1
-          q() { echo "=== $1"; curl -s -X POST https://gql.twitch.tv/gql -H "Client-ID: kimne78kx3ncx6brgo4mv6wki5h1ko" -H "Content-Type: application/json" --data "$2" | head -c 3000; echo; }
-          q clipsA '{"query":"query{user(login:\"shroud\"){clips(first:3,criteria:{period:LAST_WEEK,sort:VIEWS_DESC}){edges{cursor node{id slug title viewCount durationSeconds createdAt thumbnailURL curator{displayName} game{name}}} pageInfo{hasNextPage}}}}"}'
-          q clipsAll '{"query":"query{user(login:\"shroud\"){clips(first:2,criteria:{period:ALL_TIME}){edges{node{slug title viewCount}}}}}"}'
-          SLUG=$(curl -s -X POST https://gql.twitch.tv/gql -H "Client-ID: kimne78kx3ncx6brgo4mv6wki5h1ko" -H "Content-Type: application/json" --data '{"query":"query{user(login:\"shroud\"){clips(first:1,criteria:{period:ALL_TIME}){edges{node{slug}}}}}"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['user']['clips']['edges'][0]['node']['slug'])")
-          echo "slug=$SLUG"
-          TOK=$(curl -s -X POST https://gql.twitch.tv/gql -H "Client-ID: kimne78kx3ncx6brgo4mv6wki5h1ko" -H "Content-Type: application/json" --data "{\"query\":\"query{clip(slug:\\\"$SLUG\\\"){playbackAccessToken(params:{platform:\\\"web\\\",playerBackend:\\\"mediaplayer\\\",playerType:\\\"site\\\"}){signature value} videoQualities{frameRate quality sourceURL}}}\"}")
-          echo "=== token"; echo "$TOK" | head -c 2500; echo
-          python3 - "$TOK" <<'PY' > clipurl.txt
-          import sys,json,urllib.parse
-          d=json.loads(sys.argv[1])['data']['clip']
-          q=d['videoQualities'][0]
-          t=d['playbackAccessToken']
-          print(q['sourceURL']+'?sig='+t['signature']+'&token='+urllib.parse.quote(t['value']))
-          PY
-          echo "=== head"; curl -sI "$(cat clipurl.txt)" | head -8
-          echo "=== head-nosig"; curl -sI "$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['data']['clip']['videoQualities'][0]['sourceURL'])" "$TOK")" | head -3
+          CID=0d3t2yyq8nxwbspxvxms81jcgq46l0
+          r() { echo "=== $1"; curl -s -X POST https://id.twitch.tv/oauth2/token $2; echo; }
+          r no-secret "-d client_id=$CID -d grant_type=refresh_token -d refresh_token=abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef12"
+          r placeholder-secret "-d client_id=$CID -d client_secret=PASTE_YOUR_CLIENT_SECRET_HERE -d grant_type=refresh_token -d refresh_token=abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef12"
+          r device "-d client_id=$CID -d scopes=user:read:follows"
       - run: |
           git config user.name probe; git config user.email probe@users.noreply.github.com
           git add probe-out.txt; git commit -m "probe output [skip ci]"; git push
