@@ -60,6 +60,8 @@ fun FollowedRail(
     onOpenChannel: (String) -> Unit,
     onSignIn: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Live rows: opens the stream (or channel page, per the one-click setting). */
+    onWatch: (String) -> Unit = onOpenChannel,
 ) {
     val c = PureTvTheme.colors
     Column(modifier = modifier.fillMaxWidth()) {
@@ -102,7 +104,7 @@ fun FollowedRail(
                     Text("No followed channels live", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
                 }
                 // Keyed by login (live + offline are disjoint, so keys stay unique across both).
-                else -> items(state.live, key = { it.login }) { FollowRowItem(it, onClick = { onOpenChannel(it.login) }) }
+                else -> items(state.live, key = { it.login }) { FollowRowItem(it, onClick = { onWatch(it.login) }) }
             }
 
             if (state.offline.isNotEmpty()) {

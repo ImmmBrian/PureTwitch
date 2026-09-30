@@ -189,6 +189,8 @@ data class BrowseUiState(
     /** Live viewer total per category id. Filled in after the grid loads; a category
      *  missing here simply shows no count (the lookup is best-effort). */
     val viewers: Map<String, Int> = emptyMap(),
+    /** Categories matching the search box that aren't in the top list (Helix search). */
+    val searchResults: List<GameInfo> = emptyList(),
 ) {
     /** Highest viewer total first. Categories without a count keep Twitch's order, after the rest. */
     fun gamesByViewers(): List<GameInfo> {
@@ -223,7 +225,35 @@ class BrowseViewModel(
 
     private suspend fun refreshViewers(games: List<GameInfo>) {
         val counts = runCatching { viewerCounts(games.map { it.id }) }.getOrDefault(emptyMap())
-        if (counts.isNotEmpty()) _state.update { it.copy(viewers = counts) }
+        if (counts.isNotEmpty()) _state.update { it.copy(viewers = it.viewers + counts) }
+    }
+
+    /** Viewer totals for categories outside the top list (pinned ones, search hits). */
+    fun ensureViewers(ids: List<String>) {
+        val missing = ids.filter { it !in _state.value.viewers }
+        if (missing.isEmpty()) return
+        scope.launch {
+            val counts = runCatching { viewerCounts(missing) }.getOrDefault(emptyMap())
+            if (counts.isNotEmpty()) _state.update { it.copy(viewers = it.viewers + counts) }
+        }
+    }
+
+    private var searchJob: Job? = null
+
+    /** Search box: local matches are instant; Twitch's category search fills in the rest. */
+    fun search(query: String) {
+        searchJob?.cancel()
+        val q = query.trim()
+        if (q.length < 2) {
+            _state.update { it.copy(searchResults = emptyList()) }
+            return
+        }
+        searchJob = scope.launch {
+            delay(300)
+            val found = runCatching { channelRepository.searchCategories(q) }.getOrDefault(emptyList())
+            _state.update { it.copy(searchResults = found) }
+            refreshViewers(found.filter { it.id !in _state.value.viewers })
+        }
     }
 }
 
@@ -344,8 +374,14 @@ class StreamViewModel(
     private val apiClient: TwitchApiClient,
     private val sevenTvEventClient: SevenTvEventClient,
     private val badgeRepository: BadgeRepository,
+    /** Called once the channel has loaded, to record it in watch history. */
+    private val onWatched: (ChannelInfo, StreamInfo?) -> Unit = { _, _ -> },
 ) : DesktopViewModel() {
     private val _state = MutableStateFlow(StreamUiState())
+
+    /** The quality to go back to when leaving the mini player / audio-only mode. */
+    private var qualityBeforeDock: StreamQuality? = null
+    private var qualityBeforeAudio: StreamQuality? = null
     val state: StateFlow<StreamUiState> = _state.asStateFlow()
 
     // Identity for the optimistic local echo of our own sent messages — Twitch
@@ -418,6 +454,7 @@ class StreamViewModel(
             _state.update {
                 it.copy(channel = channel, streamInfo = liveInfo, currentQuality = preferredQuality, isLoading = false)
             }
+            channel?.let { ch -> runCatching { onWatched(ch, liveInfo) } }
 
             // Badge art only needs the channel id, not the emote lists below, so fetch it
             // on its own coroutine instead of waiting behind the sequential emote-loading
@@ -471,6 +508,16 @@ class StreamViewModel(
         }
         scope.launch {
             adBlockEngine.status.collect { status -> _state.update { it.copy(adBlockStatus = status) } }
+        }
+        // Keep viewer count, title and category current. They were read once on open,
+        // so a long session showed numbers from hours ago. A stream that has ended
+        // keeps its last known info rather than blanking the header.
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                val fresh = runCatching { streamRepository.streamsForChannels(listOf(channelLogin)).firstOrNull() }.getOrNull()
+                if (fresh != null) _state.update { it.copy(streamInfo = fresh) }
+            }
         }
         scope.launch {
             // libVLC can remain in PLAYING after its HLS demuxer has stopped
@@ -556,7 +603,48 @@ class StreamViewModel(
         vlcPlayer.play(url)
     }
 
-    fun setQuality(quality: StreamQuality) = playAt(quality)
+    fun setQuality(quality: StreamQuality) {
+        // A manual pick wins over any automatic switch we'd otherwise undo later.
+        qualityBeforeDock = null
+        qualityBeforeAudio = null
+        playAt(quality)
+    }
+
+    val isAudioOnly: Boolean get() = _state.value.currentQuality == StreamQuality.AUDIO_ONLY
+
+    /** Audio-only saves most of the bandwidth and CPU; toggling back restores the previous quality. */
+    fun toggleAudioOnly() {
+        if (_state.value.playableUrl == null) return
+        if (isAudioOnly) {
+            val back = qualityBeforeAudio ?: StreamQuality.AUTO
+            qualityBeforeAudio = null
+            playAt(back)
+        } else {
+            qualityBeforeAudio = _state.value.currentQuality
+            qualityBeforeDock = null
+            playAt(StreamQuality.AUDIO_ONLY)
+        }
+    }
+
+    /**
+     * The mini player is small, so full resolution is wasted there. When docked,
+     * drop to 480p (if currently higher); when expanded, go back to what was playing.
+     */
+    fun setDocked(docked: Boolean) {
+        val s = _state.value
+        if (s.playableUrl == null || isAudioOnly) return
+        if (docked) {
+            if (qualityBeforeDock == null && isAbove480(s.currentQuality)) {
+                qualityBeforeDock = s.currentQuality
+                playAt(StreamQuality.P480P)
+            }
+        } else {
+            qualityBeforeDock?.let { back ->
+                qualityBeforeDock = null
+                playAt(back)
+            }
+        }
+    }
 
     /** Live-apply the scaler to the running player AND persist it. The whole point:
      *  it changes the picture mid-stream, not just on restart. */
@@ -924,3 +1012,6 @@ class LoginViewModel(
         _state.update { it.copy(isAuthenticating = false, userCode = null, isLoggedIn = true) }
     }
 }
+
+/** Auto, Source, 1080p and 720p are all above 480p; 480p, 360p and audio are not. */
+internal fun isAbove480(q: StreamQuality): Boolean = q.sortOrder < StreamQuality.P480P.sortOrder

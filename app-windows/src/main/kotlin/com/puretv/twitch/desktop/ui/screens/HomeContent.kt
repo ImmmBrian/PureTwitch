@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.puretv.twitch.core.model.StreamInfo
 import com.puretv.twitch.desktop.data.FollowStore
 import com.puretv.twitch.desktop.data.ListSort
+import com.puretv.twitch.desktop.data.HistoryEntry
 import com.puretv.twitch.desktop.data.ViewPrefsStore
 import com.puretv.twitch.desktop.data.FollowedChannel
 import com.puretv.twitch.desktop.data.WatchProgress
@@ -95,7 +96,12 @@ import org.koin.core.Koin
  * cheap with hundreds of streams, since only the grid cells on screen compose.
  */
 @Composable
-fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLaunch) -> Unit) {
+fun HomeContent(
+    koin: Koin,
+    onOpenChannel: (String) -> Unit,
+    onResumeVod: (VodLaunch) -> Unit,
+    onWatch: (String) -> Unit = onOpenChannel,
+) {
     val viewModel = rememberDesktopViewModel { koin.get<HomeViewModel>() }
     val state by viewModel.state.collectAsState()
 
@@ -149,7 +155,7 @@ fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLa
                         HomeHero(
                             hero = hero,
                             isFollowed = isFollowed,
-                            onWatch = { onOpenChannel(hero.login) },
+                            onWatch = { onWatch(hero.login) },
                             onToggleFollow = {
                                 if (isFollowed) {
                                     followStore.unfollow(hero.login)
@@ -185,6 +191,24 @@ fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLa
                     }
                 }
 
+                if (prefs.history.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(Modifier.padding(top = 20.dp)) {
+                            SectionHeading(
+                                title = "Recently watched",
+                                actionLabel = "Clear",
+                                onAction = { prefsStore.clearHistory() },
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                items(prefs.history.take(20), key = { "hist_${it.login}" }) { h ->
+                                    HistoryChip(entry = h, onClick = { onOpenChannel(h.login) })
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (state.following.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(Modifier.padding(top = 20.dp)) {
@@ -203,7 +227,7 @@ fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLa
                                         viewerCount = ch.viewerCount,
                                         game = ch.gameName,
                                         title = ch.title,
-                                        onClick = { onOpenChannel(ch.login) },
+                                        onClick = { if (ch.isLive) onWatch(ch.login) else onOpenChannel(ch.login) },
                                         modifier = Modifier.width(240.dp),
                                     )
                                 }
@@ -237,7 +261,7 @@ fun HomeContent(koin: Koin, onOpenChannel: (String) -> Unit, onResumeVod: (VodLa
                             viewerCount = stream.viewerCount,
                             game = stream.gameName,
                             title = stream.title,
-                            onClick = { onOpenChannel(stream.userLogin) },
+                            onClick = { onWatch(stream.userLogin) },
                         )
                     }
                 } else if (state.following.isEmpty()) {
@@ -617,3 +641,43 @@ private fun sizedThumbUrl(raw: String, width: Int, height: Int): String? =
  */
 private fun vodThumbUrl(raw: String): String? =
     raw.takeIf { it.isNotBlank() }?.replace("%{width}", "320")?.replace("%{height}", "180")
+
+/** A recently watched channel: avatar, name, and what they were playing when you watched. */
+@Composable
+private fun HistoryChip(entry: HistoryEntry, onClick: () -> Unit) {
+    val c = PureTvTheme.colors
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .width(240.dp)
+            .expressiveClickable(
+                interaction = interaction,
+                onClick = onClick,
+                restRadius = PureTvTheme.shapes.card,
+                hoverRadius = PureTvTheme.shapes.cardMorph,
+                color = c.surfaceLow,
+                hoverColor = c.surfaceHigh,
+            )
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Avatar(entry.displayName, entry.avatarUrl.takeIf { it.isNotBlank() }, size = 44)
+        Column(Modifier.weight(1f)) {
+            Text(entry.displayName, style = MaterialTheme.typography.titleMedium, color = c.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val sub = listOfNotNull(entry.gameName.takeIf { it.isNotBlank() }, timeAgo(entry.watchedAt)).joinToString(" · ")
+            Text(sub, style = PureTvType.dataSmall, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** "just now", "12m ago", "3h ago", "2d ago". */
+internal fun timeAgo(epochMs: Long, now: Long = System.currentTimeMillis()): String {
+    val mins = ((now - epochMs) / 60_000).coerceAtLeast(0)
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> "${mins}m ago"
+        mins < 60 * 24 -> "${mins / 60}h ago"
+        else -> "${mins / (60 * 24)}d ago"
+    }
+}

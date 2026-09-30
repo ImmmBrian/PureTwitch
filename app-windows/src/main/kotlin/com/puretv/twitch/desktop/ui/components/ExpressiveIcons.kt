@@ -15,6 +15,13 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.OpenInFull
@@ -116,6 +123,13 @@ object ExpressiveIcons {
     val Expand: ImageVector = Icons.Filled.OpenInFull
     val ScrollTop: ImageVector = Icons.Filled.VerticalAlignTop
     val DragHandle: ImageVector = Icons.Filled.DragIndicator
+    val AudioOnly: ImageVector = Icons.Filled.Headphones
+    val Resize: ImageVector = Icons.Filled.PhotoSizeSelectLarge
+    val Pin: ImageVector = Icons.Filled.PushPin
+    val PinOutlined: ImageVector = Icons.Outlined.PushPin
+    val Surprise: ImageVector = Icons.Filled.Casino
+    val SaveSearch: ImageVector = Icons.Filled.BookmarkAdd
+    val History: ImageVector = Icons.Filled.History
 
     // Status / layout
     val Shield: ImageVector = Icons.Filled.Shield

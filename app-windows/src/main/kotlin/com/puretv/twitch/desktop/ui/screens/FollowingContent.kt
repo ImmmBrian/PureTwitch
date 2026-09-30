@@ -61,7 +61,7 @@ import org.koin.core.Koin
 private enum class FollowingLayout(val label: String) { GRID("Grid"), LIST("List") }
 
 @Composable
-fun FollowingContent(koin: Koin, onOpenChannel: (String) -> Unit, onSignIn: () -> Unit) {
+fun FollowingContent(koin: Koin, onOpenChannel: (String) -> Unit, onSignIn: () -> Unit, onWatch: (String) -> Unit = onOpenChannel) {
     val viewModel = rememberDesktopViewModel { koin.get<FollowedRailViewModel>() }
     val state by viewModel.state.collectAsState()
     var layout by remember { mutableStateOf(FollowingLayout.GRID) }
@@ -121,11 +121,11 @@ fun FollowingContent(koin: Koin, onOpenChannel: (String) -> Unit, onSignIn: () -
                         )
                         layout == FollowingLayout.GRID -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             state.live.chunked(4).forEach { chunk ->
-                                LiveGridRow(chunk, onOpenChannel)
+                                LiveGridRow(chunk, onWatch)
                             }
                         }
                         else -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            state.live.forEach { row -> LiveListRow(row, onClick = { onOpenChannel(row.login) }) }
+                            state.live.forEach { row -> LiveListRow(row, onClick = { onWatch(row.login) }) }
                         }
                     }
                 }

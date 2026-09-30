@@ -1,5 +1,7 @@
 package com.puretv.twitch.desktop.ui.components
 
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -362,6 +364,7 @@ fun ChatMessageRow(
     modifier: Modifier = Modifier,
     showTimestamps: Boolean = true,
     onReply: ((ChatMessage) -> Unit)? = null,
+    onUserClick: ((ChatMessage) -> Unit)? = null,
 ) {
     val c = PureTvTheme.colors
 
@@ -444,6 +447,13 @@ fun ChatMessageRow(
             color = nameColor,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
+            modifier = if (onUserClick != null) {
+                Modifier
+                    .pointerHoverIcon(PointerIcon.Hand)
+                    .clickable { onUserClick(message) }
+            } else {
+                Modifier
+            },
         )
 
         if (message.deleted) {

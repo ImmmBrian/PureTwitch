@@ -1,5 +1,23 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import com.puretv.twitch.core.model.GameInfo
+import com.puretv.twitch.desktop.data.PinnedCategory
+import com.puretv.twitch.desktop.ui.components.ExpressiveButtonStyle
+import com.puretv.twitch.desktop.ui.components.ExpressiveIconButton
+import com.puretv.twitch.desktop.ui.components.ExpressiveIcons
+import com.puretv.twitch.desktop.ui.components.SectionHeading
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,9 +80,31 @@ fun BrowseContent(koin: Koin, onOpenCategory: (gameId: String, gameName: String)
     val prefsStore = remember { koin.get<ViewPrefsStore>() }
     val prefs by prefsStore.prefs.collectAsState()
     val sort = prefs.listSort
-    val games = remember(state.games, state.viewers, sort) {
-        if (sort == ListSort.VIEWERS) state.gamesByViewers() else state.games
+    var query by remember { mutableStateOf("") }
+
+    val pinned = remember(prefs.pinnedCategories) { prefs.pinnedCategories.map { GameInfo(it.id, it.name, it.boxArtUrl) } }
+    val pinnedIds = remember(pinned) { pinned.map { it.id }.toSet() }
+    LaunchedEffect(pinnedIds) { viewModel.ensureViewers(pinnedIds.toList()) }
+
+    val games = remember(state.games, state.viewers, state.searchResults, sort, query) {
+        val base = if (sort == ListSort.VIEWERS) state.gamesByViewers() else state.games
+        val q = query.trim()
+        if (q.isEmpty()) {
+            base
+        } else {
+            // Instant local matches first, then Twitch's search for everything else.
+            val local = base.filter { it.name.contains(q, ignoreCase = true) }
+            val localIds = local.map { it.id }.toSet()
+            val remote = state.searchResults.filter { it.id !in localIds }
+            val merged = local + remote
+            if (sort == ListSort.VIEWERS) merged.sortedByDescending { state.viewers[it.id] ?: -1 } else merged
+        }
     }
+    val pinnedSorted = remember(pinned, state.viewers, sort) {
+        if (sort == ListSort.VIEWERS) pinned.sortedByDescending { state.viewers[it.id] ?: -1 } else pinned
+    }
+
+    fun togglePin(game: GameInfo) = prefsStore.togglePinned(PinnedCategory(game.id, game.name, game.boxArtUrl))
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(6),
@@ -75,8 +115,16 @@ fun BrowseContent(koin: Koin, onOpenCategory: (gameId: String, gameName: String)
     ) {
         fullSpan {
             Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     PageTitle("Browse", modifier = Modifier.weight(1f))
+                    CategorySearchField(
+                        value = query,
+                        onValueChange = {
+                            query = it
+                            viewModel.search(it)
+                        },
+                        modifier = Modifier.width(320.dp),
+                    )
                     SegmentedToggle(
                         options = ListSort.entries,
                         selected = sort,
@@ -85,8 +133,24 @@ fun BrowseContent(koin: Koin, onOpenCategory: (gameId: String, gameName: String)
                         height = 44.dp,
                     )
                 }
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(if (pinnedSorted.isNotEmpty() && query.isBlank()) 12.dp else 28.dp))
             }
+        }
+
+        // Pinned categories stay on top, whatever the sort.
+        if (pinnedSorted.isNotEmpty() && query.isBlank()) {
+            fullSpan { SectionHeading(title = "Pinned") }
+            items(pinnedSorted, key = { "pin_${it.id}" }) { game ->
+                GameTile(
+                    name = game.name,
+                    boxArtUrl = game.boxArtUrl,
+                    viewers = state.viewers[game.id],
+                    pinned = true,
+                    onTogglePin = { togglePin(game) },
+                    onClick = { onOpenCategory(game.id, game.name) },
+                )
+            }
+            fullSpan { SectionHeading(title = "All categories", modifier = Modifier.padding(top = 12.dp)) }
         }
 
         when {
@@ -99,11 +163,18 @@ fun BrowseContent(koin: Koin, onOpenCategory: (gameId: String, gameName: String)
                     onAction = { viewModel.load() },
                 )
             }
-            state.games.isEmpty() -> fullSpan {
+            state.games.isEmpty() && query.isBlank() -> fullSpan {
                 EditorialEmptyState(
                     kicker = "Categories",
                     title = if (state.isLoading) "Loading categories…" else "Nothing to browse yet",
                     message = if (state.isLoading) "Fetching the top categories." else "Top categories will appear here in a moment.",
+                )
+            }
+            games.isEmpty() -> fullSpan {
+                EditorialEmptyState(
+                    kicker = "Categories",
+                    title = "No categories match \"${query.trim()}\"",
+                    message = "Check the spelling, or try a shorter name.",
                 )
             }
             else -> items(games, key = { it.id }) { game ->
@@ -111,9 +182,47 @@ fun BrowseContent(koin: Koin, onOpenCategory: (gameId: String, gameName: String)
                     name = game.name,
                     boxArtUrl = game.boxArtUrl,
                     viewers = state.viewers[game.id],
+                    pinned = game.id in pinnedIds,
+                    onTogglePin = { togglePin(game) },
                     onClick = { onOpenCategory(game.id, game.name) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CategorySearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val c = PureTvTheme.colors
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(PureTvTheme.shapes.pillShape)
+            .background(c.surfaceHigh)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(ExpressiveIcons.Search, contentDescription = null, tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (value.isEmpty()) Text("Search categories", color = c.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(color = c.onSurface, fontSize = MaterialTheme.typography.bodyMedium.fontSize),
+                cursorBrush = SolidColor(c.primary),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (value.isNotEmpty()) {
+            ExpressiveIconButton(
+                icon = ExpressiveIcons.Close,
+                contentDescription = "Clear search",
+                onClick = { onValueChange("") },
+                boxSize = 28.dp,
+                iconSize = 16.dp,
+            )
         }
     }
 }
@@ -125,10 +234,18 @@ fun BrowseContent(koin: Koin, onOpenCategory: (gameId: String, gameName: String)
  * anywhere on the tile, art or title, animates the whole thing together.
  */
 @Composable
-private fun GameTile(name: String, boxArtUrl: String, viewers: Int?, onClick: () -> Unit) {
+private fun GameTile(
+    name: String,
+    boxArtUrl: String,
+    viewers: Int?,
+    pinned: Boolean,
+    onTogglePin: () -> Unit,
+    onClick: () -> Unit,
+) {
     val c = PureTvTheme.colors
     val shapes = PureTvTheme.shapes
     val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
 
     Column(
         modifier = Modifier.expressiveClickable(
@@ -158,6 +275,18 @@ private fun GameTile(name: String, boxArtUrl: String, viewers: Int?, onClick: ()
                 contentDescription = name,
                 modifier = Modifier.fillMaxSize(),
             )
+            // Pin toggle: always visible once pinned, otherwise on hover.
+            if (pinned || hovered) {
+                ExpressiveIconButton(
+                    icon = if (pinned) ExpressiveIcons.Pin else ExpressiveIcons.PinOutlined,
+                    contentDescription = if (pinned) "Unpin $name" else "Pin $name",
+                    onClick = onTogglePin,
+                    style = ExpressiveButtonStyle.Tonal,
+                    boxSize = 36.dp,
+                    iconSize = 18.dp,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                )
+            }
         }
         Text(
             name,

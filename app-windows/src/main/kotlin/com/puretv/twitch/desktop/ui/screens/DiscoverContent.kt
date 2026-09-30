@@ -1,5 +1,9 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.foundation.layout.widthIn
+import com.puretv.twitch.desktop.data.SavedSearch
+import com.puretv.twitch.desktop.data.ViewPrefsStore
+import com.puretv.twitch.desktop.ui.components.ExpressiveSwitch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -78,6 +82,8 @@ private val FILTER_PANEL_WIDTH = 360.dp
 fun DiscoverContent(koin: Koin, onOpenChannel: (String) -> Unit) {
     val viewModel = rememberDesktopViewModel { koin.get<DiscoverViewModel>() }
     val state by viewModel.state.collectAsState()
+    val prefsStore = remember { koin.get<ViewPrefsStore>() }
+    val prefs by prefsStore.prefs.collectAsState()
 
     Row(
         modifier = Modifier.fillMaxSize().padding(start = 32.dp, end = 24.dp, top = 36.dp, bottom = 24.dp),
@@ -86,6 +92,9 @@ fun DiscoverContent(koin: Koin, onOpenChannel: (String) -> Unit) {
         FilterPanel(
             state = state,
             viewModel = viewModel,
+            saved = prefs.savedSearches,
+            onSave = { name -> prefsStore.saveSearch(name, state.draft) },
+            onDeleteSaved = { name -> prefsStore.deleteSearch(name) },
             modifier = Modifier.width(FILTER_PANEL_WIDTH).fillMaxHeight(),
         )
         ResultsPanel(
@@ -93,6 +102,7 @@ fun DiscoverContent(koin: Koin, onOpenChannel: (String) -> Unit) {
             onOpenChannel = onOpenChannel,
             onLoadMore = viewModel::loadMore,
             onRetry = viewModel::apply,
+            onSurprise = { state.results.randomOrNull()?.let { onOpenChannel(it.userLogin) } },
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
     }
@@ -102,13 +112,39 @@ fun DiscoverContent(koin: Koin, onOpenChannel: (String) -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterPanel(state: DiscoverUiState, viewModel: DiscoverViewModel, modifier: Modifier = Modifier) {
+private fun FilterPanel(
+    state: DiscoverUiState,
+    viewModel: DiscoverViewModel,
+    saved: List<SavedSearch>,
+    onSave: (String) -> Unit,
+    onDeleteSaved: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = PureTvTheme.colors
     val d = state.draft
+    var naming by remember { mutableStateOf<String?>(null) }
 
     Column(modifier) {
         PageTitle("Discover")
         Spacer(Modifier.height(20.dp))
+
+        // Saved searches: one click loads and runs it.
+        if (saved.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 14.dp),
+            ) {
+                saved.forEach { search ->
+                    SavedSearchChip(
+                        name = search.name,
+                        active = search.filters == state.applied,
+                        onClick = { viewModel.load(search.filters) },
+                        onDelete = { onDeleteSaved(search.name) },
+                    )
+                }
+            }
+        }
 
         Column(
             modifier = Modifier
@@ -216,6 +252,18 @@ private fun FilterPanel(state: DiscoverUiState, viewModel: DiscoverViewModel, mo
                 )
             }
 
+            FilterSection("Channels I follow") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Hide them, so you only see new people",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ExpressiveSwitch(checked = d.hideFollowed, onCheckedChange = { on -> viewModel.updateDraft { it.copy(hideFollowed = on) } })
+                }
+            }
+
             FilterSection("Sort by") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DiscoverSort.entries.forEach { s ->
@@ -226,6 +274,17 @@ private fun FilterPanel(state: DiscoverUiState, viewModel: DiscoverViewModel, mo
         }
 
         Spacer(Modifier.height(14.dp))
+        naming?.let { current ->
+            Row(
+                modifier = Modifier.padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterTextField(value = current, onValueChange = { naming = it.take(60) }, placeholder = "Name this search", modifier = Modifier.weight(1f))
+                ExpressiveButton(text = "Save", onClick = { onSave(current); naming = null }, size = ExpressiveButtonSize.Small)
+                ExpressiveIconButton(icon = ExpressiveIcons.Close, contentDescription = "Cancel", onClick = { naming = null }, boxSize = 36.dp, iconSize = 18.dp)
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             ExpressiveButton(
                 text = if (state.hasUnappliedChanges) "Find streams" else "Refresh",
@@ -233,6 +292,13 @@ private fun FilterPanel(state: DiscoverUiState, viewModel: DiscoverViewModel, mo
                 icon = ExpressiveIcons.Search,
                 size = ExpressiveButtonSize.Large,
                 modifier = Modifier.weight(1f),
+            )
+            ExpressiveIconButton(
+                icon = ExpressiveIcons.SaveSearch,
+                contentDescription = "Save this search",
+                onClick = { naming = d.describe() },
+                style = ExpressiveButtonStyle.Tonal,
+                boxSize = 56.dp,
             )
             ExpressiveButton(
                 text = "Reset",
@@ -319,6 +385,7 @@ private fun ResultsPanel(
     onOpenChannel: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
+    onSurprise: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = PureTvTheme.colors
@@ -344,9 +411,18 @@ private fun ResultsPanel(
                     color = c.onSurfaceVariant,
                 )
             }
+            Spacer(Modifier.weight(1f))
             if (state.hasUnappliedChanges && !state.isLoading) {
-                Spacer(Modifier.weight(1f))
                 Text("Filters changed. Press Find streams.", style = MaterialTheme.typography.bodySmall, color = c.primary)
+            }
+            if (state.results.isNotEmpty() && !state.isLoading) {
+                ExpressiveButton(
+                    text = "Surprise me",
+                    onClick = onSurprise,
+                    icon = ExpressiveIcons.Surprise,
+                    style = ExpressiveButtonStyle.Tonal,
+                    size = ExpressiveButtonSize.Small,
+                )
             }
         }
         if (state.source == DiscoverSource.HELIX && state.draft.maxViewers != null && state.applied.gameId == null) {
@@ -492,5 +568,36 @@ private fun DiscoverRow(stream: StreamInfo, onClick: () -> Unit) {
             onClick = onClick,
             style = ExpressiveButtonStyle.Tonal,
         )
+    }
+}
+
+/** A saved search: click to run it, x to delete it. */
+@Composable
+private fun SavedSearchChip(name: String, active: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
+    val c = PureTvTheme.colors
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .height(36.dp)
+            .expressiveClickable(
+                interaction = interaction,
+                onClick = onClick,
+                restRadius = 18.dp,
+                hoverRadius = 12.dp,
+                color = if (active) c.secondaryContainer else c.surfaceHigh,
+                hoverColor = if (active) c.secondaryContainer else c.surfaceHighest,
+            )
+            .padding(start = 14.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            name,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (active) c.onSecondaryContainer else c.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 220.dp),
+        )
+        ExpressiveIconButton(icon = ExpressiveIcons.Close, contentDescription = "Delete $name", onClick = onDelete, boxSize = 28.dp, iconSize = 14.dp)
     }
 }

@@ -11,6 +11,25 @@ release notes automatically.
 
 ---
 
+## 1.14.0 - 2026-09-30
+
+A round of quality-of-life upgrades across the whole app.
+
+### New
+- **One click to watch.** Clicking a live channel opens the stream straight away (switch it off in Settings).
+- **Audio only.** The headphones button plays the stream with no video.
+- **Recently watched** on Home.
+- **Browse search and pins.** Search any category, and pin favourites to the top.
+- **Discover saved searches, "Hide channels I follow", and Surprise me.**
+- **Chat:** click a name for their recent messages, ignore users, and highlight words you care about.
+- **Backup and restore** in Settings.
+
+### Improved
+- **Mini player** snaps to the nearest corner, has three sizes, and has its own volume (scroll over it too).
+- **Lower quality in the mini player** saves CPU and data, and goes back up when you expand.
+- **Live numbers.** Viewer count, title and category refresh every minute.
+- **Shortcuts:** M mutes, Up and Down change the volume.
+
 ## 1.13.0 - 2026-09-30
 
 Move the mini player anywhere, and see everything a channel shows under its stream.

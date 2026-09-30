@@ -4,6 +4,7 @@ import com.puretv.twitch.desktop.auth.DesktopOAuthManager
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.data.FollowStore
 import com.puretv.twitch.desktop.data.ViewPrefsStore
+import com.puretv.twitch.desktop.data.HistoryEntry
 import com.puretv.twitch.desktop.discover.DiscoverRepository
 import com.puretv.twitch.desktop.discover.TwitchDirectoryGql
 import com.puretv.twitch.core.api.TwitchApiClient
@@ -114,13 +115,37 @@ val desktopModule = module {
             searchCategories = { q -> channels.searchCategories(q) },
             initialFilters = prefs.prefs.value.discover,
             persistFilters = { prefs.setDiscoverFilters(it) },
+            followedLogins = {
+                // Local follows plus real Twitch follows (when signed in).
+                val local = get<FollowStore>().followed.value.map { it.login }
+                val store = get<DesktopSettingsStore>()
+                val userId = if (store.isLoggedIn) store.sessionUserId else null
+                val remote = userId?.let { id ->
+                    runCatching { get<TwitchApiClient>().getAllFollowedChannels(id).map { it.broadcaster_login } }.getOrDefault(emptyList())
+                }.orEmpty()
+                (local + remote).toSet()
+            },
         )
     }
     // Category drill-down takes (gameId, gameName) from the tapped Browse card.
     factory { (gameId: String, gameName: String) -> CategoryViewModel(gameId, gameName, get()) }
     factory { SearchViewModel(get()) }
     factory { (channelLogin: String) ->
-        StreamViewModel(channelLogin, get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        val prefs = get<ViewPrefsStore>()
+        StreamViewModel(
+            channelLogin, get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            onWatched = { ch, info ->
+                prefs.recordWatch(
+                    HistoryEntry(
+                        login = ch.login,
+                        displayName = ch.displayName,
+                        avatarUrl = ch.profileImageUrl,
+                        gameName = info?.gameName.orEmpty(),
+                        watchedAt = System.currentTimeMillis(),
+                    ),
+                )
+            },
+        )
     }
     factory { (channelLogin: String) -> ChannelViewModel(channelLogin, get(), get(), get()) }
     factory { (channelLogin: String) -> ChannelStatsViewModel(channelLogin, get(), get()) }

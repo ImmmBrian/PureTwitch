@@ -1,6 +1,12 @@
 package com.puretv.twitch.desktop.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import com.puretv.twitch.core.model.StreamQuality
+import com.puretv.twitch.desktop.ui.components.ExpressiveSlider
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,8 +56,6 @@ import com.puretv.twitch.desktop.ui.theme.PureTvType
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
-val MINI_PLAYER_WIDTH: Dp = 400.dp
-
 /**
  * The docked stream: a title bar with controls above a 16:9 [VideoSlot].
  *
@@ -71,18 +75,25 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
     expandIsScrollTop: Boolean = false,
     onDrag: ((Offset) -> Unit)? = null,
+    onDragEnd: (() -> Unit)? = null,
 ) {
     val session = host.active ?: return
     val drag by rememberUpdatedState(onDrag)
+    val dragEnd by rememberUpdatedState(onDragEnd)
     val state by session.viewModel.state.collectAsState()
-    val isPlaying by remember(player) { player.status.map { it.isPlaying }.distinctUntilChanged() }
-        .collectAsState(initial = player.status.value.isPlaying)
+    // Only the fields this bar shows, so position ticks don't recompose it.
+    val status by remember(player) {
+        player.status.map { Triple(it.isPlaying, it.volume, it.isMuted) }.distinctUntilChanged()
+    }.collectAsState(initial = Triple(player.status.value.isPlaying, player.status.value.volume, player.status.value.isMuted))
+    val (isPlaying, volume, isMuted) = status
+    val prefs by host.prefsStore.prefs.collectAsState()
+    val miniSize = prefs.miniSizeEnum
     val c = PureTvTheme.colors
     val shape = PureTvTheme.shapes.cardShape
 
     Column(
         modifier
-            .width(MINI_PLAYER_WIDTH)
+            .width(miniSize.widthDp.dp)
             .shadow(16.dp, shape)
             .clip(shape)
             .background(c.surfaceHigh),
@@ -98,7 +109,10 @@ fun MiniPlayer(
                         Modifier
                             .pointerHoverIcon(PointerIcon(Cursor(Cursor.MOVE_CURSOR)))
                             .pointerInput(Unit) {
-                                detectDragGestures { change, amount ->
+                                detectDragGestures(
+                                    onDragEnd = { dragEnd?.invoke() },
+                                    onDragCancel = { dragEnd?.invoke() },
+                                ) { change, amount ->
                                     change.consume()
                                     drag?.invoke(amount)
                                 }
@@ -146,6 +160,13 @@ fun MiniPlayer(
                 iconSize = 20.dp,
             )
             ExpressiveIconButton(
+                icon = ExpressiveIcons.Resize,
+                contentDescription = "Size: ${miniSize.label}. Click for ${miniSize.next().label.lowercase()}",
+                onClick = { host.prefsStore.setMiniSize(miniSize.next()) },
+                boxSize = 40.dp,
+                iconSize = 20.dp,
+            )
+            ExpressiveIconButton(
                 icon = if (expandIsScrollTop) ExpressiveIcons.ScrollTop else ExpressiveIcons.Expand,
                 contentDescription = if (expandIsScrollTop) "Back to the player" else "Open full player",
                 onClick = onExpand,
@@ -167,7 +188,30 @@ fun MiniPlayer(
             kind = SlotKind.MINI,
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
             onClick = onExpand,
+            // Scrolling over the picture changes the volume.
+            onWheel = { w -> session.viewModel.setVolume((volume - (w * 5).roundToInt()).coerceIn(0, 100)) },
         )
+        // Sound controls, so you never have to expand the player just to turn it down.
+        Row(
+            modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ExpressiveIconButton(
+                icon = if (isMuted || volume == 0) ExpressiveIcons.VolumeOff else ExpressiveIcons.VolumeUp,
+                contentDescription = if (isMuted) "Unmute" else "Mute",
+                onClick = { session.viewModel.toggleMute() },
+                boxSize = 36.dp,
+                iconSize = 18.dp,
+            )
+            ExpressiveSlider(
+                value = if (isMuted) 0f else volume / 100f,
+                onValueChange = { session.viewModel.setVolume((it * 100f).roundToInt()) },
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            )
+            if (state.currentQuality == StreamQuality.AUDIO_ONLY) {
+                Text("AUDIO ONLY", style = PureTvType.dataSmall, color = c.primary, modifier = Modifier.padding(end = 8.dp))
+            }
+        }
     }
 }
 
@@ -199,7 +243,20 @@ fun MiniPlayerDock(
             val minY = -(maxH - 2 * padPx - size.height).coerceAtLeast(0f)
             return Offset(o.x.coerceIn(minX, 0f), o.y.coerceIn(minY, 0f))
         }
-        val shown = clamp(host.miniOffset)
+        // On release it glides to the nearest corner, so it never sits awkwardly mid-page.
+        fun nearestCorner(o: Offset): Offset {
+            val c = clamp(o)
+            val minX = -(maxW - 2 * padPx - size.width).coerceAtLeast(0f)
+            val minY = -(maxH - 2 * padPx - size.height).coerceAtLeast(0f)
+            return Offset(if (c.x < minX / 2) minX else 0f, if (c.y < minY / 2) minY else 0f)
+        }
+        var dragging by remember { mutableStateOf(false) }
+        val target = clamp(host.miniOffset)
+        val shown by animateOffsetAsState(
+            targetValue = target,
+            animationSpec = if (dragging) snap<Offset>() else spring<Offset>(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+            label = "miniSnap",
+        )
 
         MiniPlayer(
             host = host,
@@ -207,7 +264,14 @@ fun MiniPlayerDock(
             onExpand = onExpand,
             onClose = onClose,
             expandIsScrollTop = expandIsScrollTop,
-            onDrag = { delta -> host.miniOffset = clamp(clamp(host.miniOffset) + delta) },
+            onDrag = { delta ->
+                dragging = true
+                host.miniOffset = clamp(clamp(host.miniOffset) + delta)
+            },
+            onDragEnd = {
+                dragging = false
+                host.miniOffset = nearestCorner(host.miniOffset)
+            },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(edgePadding)

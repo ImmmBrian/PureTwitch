@@ -10,6 +10,8 @@ import com.puretv.twitch.core.di.coreModule
 import com.puretv.twitch.desktop.data.DesktopSettingsStore
 import com.puretv.twitch.desktop.data.FollowStore
 import com.puretv.twitch.desktop.data.ViewerHistoryStore
+import com.puretv.twitch.desktop.data.ViewPrefsStore
+import com.puretv.twitch.desktop.data.BackupManager
 import com.puretv.twitch.desktop.data.WatchProgressStore
 import com.puretv.twitch.desktop.di.desktopModule
 import com.puretv.twitch.desktop.platform.WindowsNative
@@ -29,6 +31,10 @@ import org.koin.core.context.GlobalContext.startKoin
 import org.koin.dsl.koinApplication
 
 fun main() {
+    // A backup restored from Settings is staged on disk and applied here, before
+    // any store loads its file (a running store would overwrite a live restore).
+    BackupManager().applyPendingRestore()
+
     val koinApp = koinApplication {
         modules(coreModule, desktopModule)
     }
@@ -51,6 +57,7 @@ fun main() {
         runCatching { koinApp.koin.get<FollowStore>().flush() }
         runCatching { koinApp.koin.get<WatchProgressStore>().flush() }
         runCatching { koinApp.koin.get<ViewerHistoryStore>().flush() }
+        runCatching { koinApp.koin.get<ViewPrefsStore>().flush() }
         runCatching { runBlocking { localStreamProxy.stop() } }
         runCatching { vlcPlayer.release() }
     })

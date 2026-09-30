@@ -20,6 +20,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.puretv.twitch.desktop.data.ViewPrefsStore
 import com.puretv.twitch.desktop.player.DesktopPlayer
 import com.puretv.twitch.desktop.player.VlcPlayerView
 import org.koin.core.Koin
@@ -45,6 +46,9 @@ class ActiveStream(val login: String, val viewModel: StreamViewModel)
  * screen. That's what keeps playback and chat running while you browse.
  */
 class PlaybackHost(private val koin: Koin) {
+    /** Mini player size and the "lower quality while docked" switch live here. */
+    internal val prefsStore: ViewPrefsStore = koin.get()
+
     var active by mutableStateOf<ActiveStream?>(null)
         private set
 

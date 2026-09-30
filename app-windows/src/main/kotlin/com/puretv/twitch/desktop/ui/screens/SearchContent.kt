@@ -54,7 +54,7 @@ import com.puretv.twitch.desktop.ui.theme.PureTvType
 import org.koin.core.Koin
 
 @Composable
-fun SearchContent(koin: Koin, onOpenChannel: (String) -> Unit) {
+fun SearchContent(koin: Koin, onOpenChannel: (String) -> Unit, onWatch: (String) -> Unit = onOpenChannel) {
     val viewModel = rememberDesktopViewModel { koin.get<SearchViewModel>() }
     val state by viewModel.state.collectAsState()
     val c = PureTvTheme.colors
@@ -114,7 +114,10 @@ fun SearchContent(koin: Koin, onOpenChannel: (String) -> Unit) {
                     // its rounding without each row needing its own corner logic.
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(state.results, key = { it.id }) { result ->
-                            SearchResultRow(result = result, onClick = { onOpenChannel(result.broadcaster_login) })
+                            SearchResultRow(
+                                result = result,
+                                onClick = { if (result.is_live) onWatch(result.broadcaster_login) else onOpenChannel(result.broadcaster_login) },
+                            )
                         }
                     }
                 }

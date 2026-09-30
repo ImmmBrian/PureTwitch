@@ -77,7 +77,26 @@ data class DiscoverFilters(
     val titleKeyword: String = "",
     val uptime: UptimeFilter = UptimeFilter.ANY,
     val sort: DiscoverSort = DiscoverSort.MOST_VIEWERS,
+    /** Leave out channels you already follow, so the list is only new people. */
+    val hideFollowed: Boolean = false,
 ) {
+    /** A short human label for these filters, used as a saved search's default name. */
+    fun describe(): String {
+        val parts = buildList {
+            gameName?.let { add(it) }
+            languageFor(language)?.let { add(it.label) }
+            when {
+                minViewers != null && maxViewers != null -> add("$minViewers to $maxViewers viewers")
+                maxViewers != null -> add("under ${maxViewers + 1} viewers")
+                minViewers != null -> add("$minViewers+ viewers")
+            }
+            if (uptime != UptimeFilter.ANY) add(uptime.label.lowercase())
+            cleanTags.takeIf { it.isNotEmpty() }?.let { add(it.joinToString(" ") { t -> "#$t" }) }
+            titleKeyword.trim().takeIf { it.isNotEmpty() }?.let { add("\"$it\"") }
+        }
+        return parts.joinToString(", ").ifEmpty { "Everything live" }.take(60)
+    }
+
     /** Tags cleaned to what Twitch accepts: letters and digits only, de-duplicated, max 5. */
     val cleanTags: List<String>
         get() = tags.map { t -> t.filter { it.isLetterOrDigit() } }

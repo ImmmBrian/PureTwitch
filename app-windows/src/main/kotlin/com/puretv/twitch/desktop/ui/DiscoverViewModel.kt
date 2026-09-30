@@ -44,7 +44,16 @@ class DiscoverViewModel(
     private val searchCategories: suspend (String) -> List<GameInfo>,
     initialFilters: DiscoverFilters,
     private val persistFilters: (DiscoverFilters) -> Unit,
+    /** Logins you follow (on Twitch and locally), for "Hide channels I follow". */
+    private val followedLogins: suspend () -> Set<String> = { emptySet() },
 ) : DesktopViewModel() {
+    private var followedCache: Set<String>? = null
+
+    private suspend fun followed(): Set<String> =
+        followedCache ?: runCatching { followedLogins() }.getOrDefault(emptySet())
+            .map { it.lowercase() }.toSet()
+            .also { followedCache = it }
+
     private val _state = MutableStateFlow(
         DiscoverUiState(draft = initialFilters, applied = initialFilters, categoryQuery = initialFilters.gameName.orEmpty()),
     )
@@ -80,6 +89,14 @@ class DiscoverViewModel(
         scanJob = scope.launch { runScan(s.applied, from) }
     }
 
+    /** Load a saved search into the panel and run it. */
+    fun load(filters: DiscoverFilters) {
+        _state.update {
+            it.copy(draft = filters, categoryQuery = filters.gameName.orEmpty(), categorySuggestions = emptyList())
+        }
+        apply()
+    }
+
     /** Clear every filter back to "everything live, most viewers first" and rescan. */
     fun reset() {
         _state.update { it.copy(draft = DiscoverFilters(), categoryQuery = "", categorySuggestions = emptyList()) }
@@ -90,8 +107,14 @@ class DiscoverViewModel(
         try {
             val batch = repository.scan(filters, from)
             next = batch.next
+            val kept = if (filters.hideFollowed) {
+                val skip = followed()
+                batch.matches.filterNot { it.userLogin.lowercase() in skip }
+            } else {
+                batch.matches
+            }
             _state.update { st ->
-                val merged = (st.results + batch.matches).distinctBy { it.id }.sortedFor(filters.sort)
+                val merged = (st.results + kept).distinctBy { it.id }.sortedFor(filters.sort)
                 st.copy(
                     results = merged,
                     scanned = st.scanned + batch.scanned,

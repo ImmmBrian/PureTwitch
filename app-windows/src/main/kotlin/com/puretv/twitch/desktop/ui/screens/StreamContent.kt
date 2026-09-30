@@ -1,5 +1,7 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.draw.shadow
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -96,6 +98,9 @@ import com.puretv.twitch.desktop.ui.SlotKind
 import com.puretv.twitch.desktop.ui.VideoSlot
 import com.puretv.twitch.desktop.ui.components.ExpressivePanel
 import com.puretv.twitch.desktop.ui.components.MarkdownText
+import com.puretv.twitch.desktop.data.ViewPrefsStore
+import com.puretv.twitch.desktop.ui.chat.applyChatFilters
+import com.puretv.twitch.desktop.ui.chat.mergeMentions
 import com.puretv.twitch.desktop.ui.LocalAppShell
 import com.puretv.twitch.desktop.ui.PlayerMode
 import com.puretv.twitch.desktop.ui.StreamViewModel
@@ -167,6 +172,7 @@ fun StreamContent(
     channelLogin: String,
     onBack: () -> Unit,
     onRequestSignIn: () -> Unit = {},
+    onOpenChannel: (String) -> Unit = {},
 ) {
     // The ViewModel is owned by PlaybackHost, not this screen, so playback and chat
     // keep running in the mini player after this screen leaves composition.
@@ -244,6 +250,7 @@ fun StreamContent(
     val latestMode = rememberUpdatedState(mode)
     val latestChatFocused = rememberUpdatedState(chatInputFocused)
     val latestUpscaling = rememberUpdatedState(appSettings.upscalingMode)
+    val latestVolume = rememberUpdatedState(playerStatus.volume)
     // F3 toggles the mpv upscaling stats overlay. It's drawn by mpv's own OSD (the
     // heavyweight video Canvas paints above Compose, so a Compose overlay can't sit
     // on the video). No-op on the VLC backend.
@@ -277,6 +284,9 @@ fun StreamContent(
                 // elsewhere; in DEFAULT mode it passes through untouched.
                 KeyEvent.VK_ESCAPE -> if (m != PlayerMode.DEFAULT) { shell.exitImmersive(); true } else false
                 KeyEvent.VK_F3 -> { showStats = !showStats; true }
+                KeyEvent.VK_M -> { viewModel.toggleMute(); true }
+                KeyEvent.VK_UP -> { viewModel.setVolume((latestVolume.value + 5).coerceAtMost(100)); true }
+                KeyEvent.VK_DOWN -> { viewModel.setVolume((latestVolume.value - 5).coerceAtLeast(0)); true }
                 else -> false
             }
         }
@@ -407,6 +417,9 @@ fun StreamContent(
                                         style = MaterialTheme.typography.bodyLarge,
                                         modifier = Modifier.padding(24.dp),
                                     )
+                                    state.playableUrl != null && state.currentQuality == StreamQuality.AUDIO_ONLY -> AudioOnlyPlaceholder(
+                                        onShowVideo = viewModel::toggleAudioOnly,
+                                    )
                                     state.playableUrl != null && docked -> Text(
                                         "Playing in the mini player",
                                         color = c.onSurfaceVariant,
@@ -467,6 +480,8 @@ fun StreamContent(
                                 volume = playerStatus.volume,
                                 isMuted = playerStatus.isMuted,
                                 settingsOpen = settingsMenuOpen,
+                                audioOnly = state.currentQuality == StreamQuality.AUDIO_ONLY,
+                                onToggleAudioOnly = viewModel::toggleAudioOnly,
                                 mode = mode,
                                 isChatOpen = isChatOpen,
                                 onTogglePlayPause = viewModel::togglePlayPause,
@@ -520,10 +535,21 @@ fun StreamContent(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     var chatTab by remember { mutableStateOf(ChatTab.Chat) }
+                    // Ignore list + highlight words apply at display time, so changing
+                    // them updates the chat already on screen.
+                    val prefsStore = remember { koin.get<ViewPrefsStore>() }
+                    val prefs by prefsStore.prefs.collectAsState()
+                    val visibleChat = remember(state.chatMessages, prefs.ignoredUsers, prefs.highlightWords) {
+                        applyChatFilters(state.chatMessages, prefs.ignoredUsers, prefs.highlightWords)
+                    }
+                    val mentions = remember(state.mentionMessages, visibleChat, prefs.ignoredUsers) {
+                        mergeMentions(state.mentionMessages, visibleChat, prefs.ignoredUsers)
+                    }
+                    var userCard by remember { mutableStateOf<ChatMessage?>(null) }
 
                     ChatHeader(
                         selected = chatTab,
-                        mentionCount = state.mentionMessages.size,
+                        mentionCount = mentions.size,
                         onSelectTab = { chatTab = it },
                         onClose = { shell.toggleChat() },
                     )
@@ -538,20 +564,33 @@ fun StreamContent(
                         CompositionLocalProvider(LocalBadgeIndex provides state.badges) {
                             when (chatTab) {
                                 ChatTab.Chat -> ChatMessageList(
-                                    messages = state.chatMessages,
+                                    messages = visibleChat,
                                     onReply = viewModel::startReply,
+                                    onUserClick = { userCard = it },
                                     modifier = Modifier.fillMaxSize(),
                                 )
                                 ChatTab.Mentions ->
-                                    if (state.mentionMessages.isEmpty()) {
+                                    if (mentions.isEmpty()) {
                                         MentionsEmptyState(Modifier.fillMaxSize())
                                     } else {
                                         ChatMessageList(
-                                            messages = state.mentionMessages,
+                                            messages = mentions,
                                             onReply = viewModel::startReply,
+                                            onUserClick = { userCard = it },
                                             modifier = Modifier.fillMaxSize(),
                                         )
                                     }
+                            }
+                            userCard?.let { picked ->
+                                ChatUserCard(
+                                    message = picked,
+                                    recent = state.chatMessages.filter { it.username.equals(picked.username, ignoreCase = true) && !it.isSystem },
+                                    ignored = picked.username.lowercase() in prefs.ignoredUsers,
+                                    onToggleIgnore = { ignore -> prefsStore.setIgnored(picked.username, ignore) },
+                                    onOpenChannel = { userCard = null; onOpenChannel(picked.username) },
+                                    onClose = { userCard = null },
+                                    modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
+                                )
                             }
                         }
                     }
@@ -735,6 +774,8 @@ private fun PlaybackControls(
     volume: Int,
     isMuted: Boolean,
     settingsOpen: Boolean,
+    audioOnly: Boolean,
+    onToggleAudioOnly: () -> Unit,
     mode: PlayerMode,
     isChatOpen: Boolean,
     onTogglePlayPause: () -> Unit,
@@ -769,6 +810,8 @@ private fun PlaybackControls(
         Spacer(Modifier.width(8.dp))
         ConnectedControlsGroup(
             settingsOpen = settingsOpen,
+            audioOnly = audioOnly,
+            onToggleAudioOnly = onToggleAudioOnly,
             isChatOpen = isChatOpen,
             mode = mode,
             onToggleSettings = onToggleSettings,
@@ -840,6 +883,8 @@ private fun VolumeButton(isMuted: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ConnectedControlsGroup(
     settingsOpen: Boolean,
+    audioOnly: Boolean,
+    onToggleAudioOnly: () -> Unit,
     isChatOpen: Boolean,
     mode: PlayerMode,
     onToggleSettings: () -> Unit,
@@ -854,10 +899,14 @@ private fun ConnectedControlsGroup(
             .clip(RoundedCornerShape(28.dp))
             .background(c.surfaceHigh),
     ) {
-        // No dedicated quick-quality flow exists in the ViewModel: resolution lives
-        // inside the same combined playback menu the gear opens, so this is a second
-        // entry point into that one menu rather than a distinct feature.
-        ControlsGroupButton(ExpressiveIcons.Quality, "Quality", onToggleSettings)
+        // Audio-only: keeps the stream going with no video, for background listening.
+        // (This slot used to be a second entry point into the gear menu.)
+        ControlsGroupButton(
+            ExpressiveIcons.AudioOnly,
+            if (audioOnly) "Show video" else "Audio only",
+            onToggleAudioOnly,
+            tint = if (audioOnly) c.primary else null,
+        )
         GroupDivider()
         ControlsGroupButton(ExpressiveIcons.Settings, "Playback settings", onToggleSettings, tint = if (settingsOpen) c.primary else null)
         GroupDivider()
@@ -1021,6 +1070,7 @@ private fun MentionsEmptyState(modifier: Modifier = Modifier) {
 private fun ChatMessageList(
     messages: List<ChatMessage>,
     onReply: (ChatMessage) -> Unit,
+    onUserClick: ((ChatMessage) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val c = PureTvTheme.colors
@@ -1059,7 +1109,7 @@ private fun ChatMessageList(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             contentPadding = PaddingValues(vertical = 14.dp),
         ) {
-            items(messages, key = { it.id }) { ChatMessageRow(message = it, onReply = onReply) }
+            items(messages, key = { it.id }) { ChatMessageRow(message = it, onReply = onReply, onUserClick = onUserClick) }
         }
         // Twitch parity: paused while scrolled up. Clicking snaps to the bottom and resumes
         // following so the feed keeps going seamlessly.
@@ -1301,6 +1351,87 @@ private fun ChatInputBar(
                     iconSize = 22.dp,
                 )
             }
+        }
+    }
+}
+
+// ── Audio only ───────────────────────────────────────────────────────────────
+
+/** Shown where the video would be while the stream plays sound only. */
+@Composable
+private fun AudioOnlyPlaceholder(onShowVideo: () -> Unit) {
+    val c = PureTvTheme.colors
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Icon(ExpressiveIcons.AudioOnly, contentDescription = null, tint = c.onSurfaceVariant, modifier = Modifier.size(56.dp))
+        Text("Audio only", style = MaterialTheme.typography.titleLarge, color = c.onSurface)
+        Text("The stream is playing with no video to save bandwidth.", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+        ExpressiveButton(text = "Show video", onClick = onShowVideo, style = ExpressiveButtonStyle.Tonal)
+    }
+}
+
+// ── User card ────────────────────────────────────────────────────────────────
+
+/**
+ * Click a name in chat: who they are, what they've said here recently, and
+ * quick actions (ignore, open their channel).
+ */
+@Composable
+private fun ChatUserCard(
+    message: ChatMessage,
+    recent: List<ChatMessage>,
+    ignored: Boolean,
+    onToggleIgnore: (Boolean) -> Unit,
+    onOpenChannel: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = PureTvTheme.colors
+    Column(
+        modifier
+            .fillMaxWidth()
+            .shadow(12.dp, RoundedCornerShape(CHAT_PANEL_RADIUS))
+            .clip(RoundedCornerShape(CHAT_PANEL_RADIUS))
+            .background(c.surfaceHigh)
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(message.displayName, style = MaterialTheme.typography.titleLarge, color = c.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val roles = listOfNotNull(
+                    "Broadcaster".takeIf { message.isBroadcaster },
+                    "Moderator".takeIf { message.isModerator },
+                    "Subscriber".takeIf { message.isSubscriber },
+                ).joinToString(" · ")
+                if (roles.isNotEmpty()) Text(roles, style = PureTvType.dataSmall, color = c.primary)
+            }
+            ExpressiveIconButton(icon = ExpressiveIcons.Close, contentDescription = "Close", onClick = onClose, boxSize = 36.dp, iconSize = 18.dp)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            if (recent.isEmpty()) "No recent messages" else "Recent messages (${recent.size})",
+            style = PureTvType.kicker,
+            color = c.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            items(recent.takeLast(30).reversed(), key = { it.id }) { m ->
+                ChatMessageRow(message = m)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ExpressiveButton(
+                text = if (ignored) "Unignore" else "Ignore",
+                onClick = { onToggleIgnore(!ignored) },
+                style = if (ignored) ExpressiveButtonStyle.Tonal else ExpressiveButtonStyle.Outlined,
+                size = ExpressiveButtonSize.Small,
+            )
+            ExpressiveButton(
+                text = "Open channel",
+                onClick = onOpenChannel,
+                style = ExpressiveButtonStyle.Tonal,
+                size = ExpressiveButtonSize.Small,
+            )
         }
     }
 }

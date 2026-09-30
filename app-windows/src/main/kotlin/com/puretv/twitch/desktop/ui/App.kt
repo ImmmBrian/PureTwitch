@@ -32,6 +32,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -215,6 +217,26 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
             // Theater/fullscreen only make sense on the stream page.
             LaunchedEffect(route) { if (route !is Route.Stream) shell.exitImmersive() }
 
+            // Lower quality while the stream sits in the mini player, restore it on
+            // expand. The short wait skips the one-frame gap while the video moves
+            // between slots, so a page change doesn't trigger a needless switch.
+            LaunchedEffect(playbackHost) {
+                snapshotFlow {
+                    val docked = playbackHost.fullSlot == null && playbackHost.miniSlot != null
+                    Triple(playbackHost.active, docked, playbackHost.prefsStore.prefs.value.lowQualityWhenDocked)
+                }.collectLatest { (session, docked, lowerWhenDocked) ->
+                    delay(800)
+                    session?.viewModel?.setDocked(docked && lowerWhenDocked)
+                }
+            }
+
+            // Live cards call this. With one-click watch on it opens the stream
+            // directly; otherwise the channel page, like before.
+            val viewPrefs by playbackHost.prefsStore.prefs.collectAsState()
+            fun watch(login: String) {
+                if (viewPrefs.oneClickWatch) openStream(login) else route = Route.Channel(login)
+            }
+
             // The window ground is the DEEPEST surface in the ladder, so the rail and
             // the content pane read as two cards floating on it. That separation is
             // what the 8dp gutter and the 28dp pane corners are for; without the
@@ -277,6 +299,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                     route = Route.Top
                                 },
                                 onOpenChannel = { login -> route = Route.Channel(login) },
+                                onWatch = { login -> watch(login) },
                                 onResumeVod = { launch -> openVod(launch) },
                                 onSignIn = {
                                     destination = Destination.ACCOUNT
@@ -305,6 +328,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                                 destination = Destination.ACCOUNT
                                                 route = Route.Top
                                             },
+                                            onOpenChannel = { login -> route = Route.Channel(login) },
                                         )
                                     } else {
                                         // Reached a stream route without a session (e.g. the
@@ -328,23 +352,29 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                     koin = koin,
                                     gameId = r.gameId,
                                     gameName = r.gameName,
-                                    onOpenChannel = { login -> route = Route.Channel(login) },
+                                    onOpenChannel = { login -> watch(login) },
                                     onBack = { route = Route.Top },
                                 )
                                 Route.Top -> when (destination) {
                                     Destination.HOME -> HomeContent(
                                         koin = koin,
                                         onOpenChannel = { login -> route = Route.Channel(login) },
+                                        onWatch = { login -> watch(login) },
                                         onResumeVod = { launch -> openVod(launch) },
                                     )
                                     Destination.FOLLOWING -> FollowingContent(
                                         koin = koin,
                                         onOpenChannel = { login -> route = Route.Channel(login) },
+                                        onWatch = { login -> watch(login) },
                                         onSignIn = { destination = Destination.ACCOUNT },
                                     )
                                     Destination.BROWSE -> BrowseContent(koin = koin, onOpenCategory = { gameId, gameName -> route = Route.Category(gameId, gameName) })
-                                    Destination.DISCOVER -> DiscoverContent(koin = koin, onOpenChannel = { login -> route = Route.Channel(login) })
-                                    Destination.SEARCH -> SearchContent(koin = koin, onOpenChannel = { login -> route = Route.Channel(login) })
+                                    Destination.DISCOVER -> DiscoverContent(koin = koin, onOpenChannel = { login -> watch(login) })
+                                    Destination.SEARCH -> SearchContent(
+                                        koin = koin,
+                                        onOpenChannel = { login -> route = Route.Channel(login) },
+                                        onWatch = { login -> watch(login) },
+                                    )
                                     Destination.SETTINGS -> SettingsContent(koin = koin, onExit = onClose)
                                     Destination.ACCOUNT -> LoginContent(koin = koin)
                                 }
@@ -625,6 +655,7 @@ private fun NavigationRail(
     selected: Destination,
     onSelect: (Destination) -> Unit,
     onOpenChannel: (String) -> Unit,
+    onWatch: (String) -> Unit,
     onResumeVod: (VodLaunch) -> Unit,
     onSignIn: () -> Unit,
 ) {
@@ -765,6 +796,7 @@ private fun NavigationRail(
                 state = railState,
                 onToggleOffline = { railVm.toggleOffline() },
                 onOpenChannel = onOpenChannel,
+                onWatch = onWatch,
                 onSignIn = onSignIn,
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 20.dp),
             )
