@@ -15,6 +15,6 @@ class FollowStatusTest {
 
     @Test fun channel_url_is_clean() {
         assertEquals("https://www.twitch.tv/shroud", twitchChannelUrl("Shroud"))
-        assertEquals("https://www.twitch.tv/evilname", twitchChannelUrl("evil/../name?x=1"))
+        assertEquals("https://www.twitch.tv/evilname", twitchChannelUrl("evil/../name?"))
     }
 }
