@@ -1,5 +1,7 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import com.puretv.twitch.desktop.ui.theme.gridColumns
+import com.puretv.twitch.desktop.ui.theme.LocalCompactLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -89,7 +91,7 @@ fun CategoryContent(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+        columns = GridCells.Fixed(gridColumns(4, LocalCompactLayout.current)),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 32.dp, end = 32.dp, bottom = 40.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),

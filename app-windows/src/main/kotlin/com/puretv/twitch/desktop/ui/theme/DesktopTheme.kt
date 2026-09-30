@@ -362,9 +362,12 @@ object PureTvTheme {
 fun PureTvDesktopTheme(
     variant: ThemeVariant = ThemeVariant.VIOLET_DUSK,
     shapeIntensity: ShapeIntensity = ShapeIntensity.EXPRESSIVE,
+    /** A user-picked accent laid over the palette (Settings > Personalize), or null. */
+    accent: Color? = null,
     content: @Composable () -> Unit,
 ) {
-    val colors = themeColors[variant]!!
+    val base = themeColors[variant]!!
+    val colors = if (accent != null) base.withAccent(accent) else base
     val shapes = shapeScale[shapeIntensity]!!
     // Mirror the roles into Material's own scheme so the handful of stock M3
     // components still in use (progress indicators, text selection) tone with the
@@ -405,3 +408,53 @@ fun PureTvDesktopTheme(
         )
     }
 }
+
+
+// ── Custom accent ──────────────────────────────────────────────────────────────
+
+/**
+ * Re-tones the accent roles (primary and its container, plus the selection fill)
+ * from one picked colour while keeping the palette's surfaces. Lightness is set
+ * per role rather than copied, so any pick stays readable on the dark surfaces
+ * and its "on" colours keep their contrast.
+ */
+fun PureTvDesktopColors.withAccent(accent: Color): PureTvDesktopColors {
+    val (h, s, l) = accent.toHsl()
+    fun tone(lightness: Float, saturation: Float = s) =
+        Color.hsl(h, saturation.coerceIn(0f, 1f), lightness.coerceIn(0f, 1f))
+    // Use the pick as-is when it's already light enough to be an accent on dark.
+    val primary = if (l in 0.6f..0.9f) accent else tone(0.78f, s.coerceAtMost(0.9f))
+    return copy(
+        primary = primary,
+        onPrimary = tone(0.16f),
+        primaryContainer = tone(0.30f, s * 0.7f),
+        onPrimaryContainer = tone(0.90f),
+        secondaryContainer = tone(0.24f, s * 0.35f),
+        onSecondaryContainer = tone(0.90f, s * 0.4f),
+    )
+}
+
+/** Hue in degrees [0, 360), saturation and lightness in [0, 1]. */
+internal fun Color.toHsl(): Triple<Float, Float, Float> {
+    val r = red
+    val g = green
+    val b = blue
+    val max = maxOf(r, g, b)
+    val min = minOf(r, g, b)
+    val l = (max + min) / 2f
+    if (max == min) return Triple(0f, 0f, l)
+    val d = max - min
+    val s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
+    val h = when (max) {
+        r -> ((g - b) / d + (if (g < b) 6f else 0f))
+        g -> ((b - r) / d + 2f)
+        else -> ((r - g) / d + 4f)
+    } * 60f
+    return Triple(h % 360f, s, l)
+}
+
+/** Settings > Personalize > Density: grids show more, smaller cards when true. */
+val LocalCompactLayout = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/** Grid columns for a page: one more in compact density. */
+fun gridColumns(comfortable: Int, compact: Boolean): Int = if (compact) comfortable + 1 else comfortable

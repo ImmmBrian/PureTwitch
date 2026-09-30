@@ -97,6 +97,11 @@ fun SettingsContent(koin: Koin, onExit: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
 
+        val lookStore = remember { koin.get<ViewPrefsStore>() }
+        val lookPrefs by lookStore.prefs.collectAsState()
+        PersonalizePanel(store = lookStore, look = lookPrefs.look)
+        Spacer(Modifier.height(16.dp))
+
         PlaybackPanel(
             selectedQuality = StreamQuality.entries.firstOrNull {
                 state.settings.preferredQuality.equals(it.name, ignoreCase = true)

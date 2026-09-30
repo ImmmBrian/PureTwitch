@@ -1,5 +1,7 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import com.puretv.twitch.desktop.ui.theme.gridColumns
+import com.puretv.twitch.desktop.ui.theme.LocalCompactLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.size
@@ -107,7 +109,7 @@ fun BrowseContent(koin: Koin, onOpenCategory: (gameId: String, gameName: String)
     fun togglePin(game: GameInfo) = prefsStore.togglePinned(PinnedCategory(game.id, game.name, game.boxArtUrl))
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(6),
+        columns = GridCells.Fixed(gridColumns(6, LocalCompactLayout.current)),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 32.dp, end = 32.dp, top = 36.dp, bottom = 40.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),

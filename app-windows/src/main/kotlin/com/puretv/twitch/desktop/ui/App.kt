@@ -33,6 +33,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.produceState
+import com.puretv.twitch.desktop.ui.components.LocalChatAppearance
+import com.puretv.twitch.desktop.ui.components.ChatAppearance
+import com.puretv.twitch.desktop.ui.theme.LocalCompactLayout
+import com.puretv.twitch.desktop.data.ViewPrefsStore
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import com.puretv.twitch.desktop.channel.ClipInfo
@@ -178,14 +184,32 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
     var updateDismissed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { updateManager.checkForUpdates() }
 
-    PureTvDesktopTheme(variant = themeVariant, shapeIntensity = shapeIntensity) {
+    // Settings > Personalize: accent, text size, density, rail tabs and chat look.
+    val lookStore = remember { koin.get<ViewPrefsStore>() }
+    val look = lookStore.prefs.collectAsState().value.look
+    val accent = look.accentArgb?.let { Color(it.toInt()) }
+
+    PureTvDesktopTheme(variant = themeVariant, shapeIntensity = shapeIntensity, accent = accent) {
         val emoteFrameCache = remember { koin.get<EmoteFrameCache>() }
+        // Text size scales only sp (text); dp layout, icons and art stay the same.
+        val baseDensity = LocalDensity.current
         CompositionLocalProvider(
             LocalAppShell provides shell,
             LocalEmoteAnimation provides settings.animateEmotes,
             LocalEmoteFrameCache provides emoteFrameCache,
+            LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * look.textScaleEnum.factor),
+            LocalCompactLayout provides look.compact,
+            LocalChatAppearance provides ChatAppearance(
+                showTimestamps = look.chatTimestamps,
+                nameColors = look.chatNameColorsEnum,
+                textScale = look.chatTextScaleEnum.factor,
+            ),
         ) {
-            var destination by remember { mutableStateOf(Destination.HOME) }
+            // Open on the tab picked in Personalize (if it's still shown).
+            var destination by remember {
+                val launch = Destination.entries.firstOrNull { it.name == look.launchTab && it.name !in look.hiddenTabs }
+                mutableStateOf(launch ?: Destination.HOME)
+            }
             var route by remember { mutableStateOf<Route>(Route.Top) }
             var railExpanded by remember { mutableStateOf(true) }
             val c = PureTvTheme.colors
@@ -355,6 +379,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                             exit = slideOutHorizontally { -it },
                         ) {
                             NavigationRail(
+                                hiddenTabs = look.hiddenTabs,
                                 koin = koin,
                                 expanded = railExpanded,
                                 onToggleExpanded = { railExpanded = !railExpanded },
@@ -749,6 +774,7 @@ private fun MaximizeIcon(isMaximized: Boolean) {
  */
 @Composable
 private fun NavigationRail(
+    hiddenTabs: List<String>,
     koin: Koin,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
@@ -855,7 +881,8 @@ private fun NavigationRail(
             Spacer(Modifier.height(16.dp))
         }
 
-        Destination.entries.forEach { dest ->
+        // Settings stays visible no matter what, so a hidden tab can always come back.
+        Destination.entries.filter { it == Destination.SETTINGS || it.name !in hiddenTabs }.forEach { dest ->
             val isSelected = dest == selected
             val liveCount = railState.live.size
             RailRow(

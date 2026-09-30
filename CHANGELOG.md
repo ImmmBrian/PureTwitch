@@ -11,6 +11,18 @@ release notes automatically.
 
 ---
 
+## 1.16.0 - 2026-09-30
+
+Make PureTV yours: a new Personalize section in Settings.
+
+### New
+- **Accent color.** Pick a swatch or any color and the whole app re-tones around it.
+- **Text size.** Small, Default or Large, across the app.
+- **Density.** Compact fits more streams on each row.
+- **Tidy left menu.** Hide tabs you don't use and choose which one opens first.
+- **Home your way.** Turn off any Home shelf.
+- **Chat look.** Chat text size, timestamps on or off, and name colors (their own, your accent, or plain).
+
 ## 1.15.0 - 2026-09-30
 
 Pop-out windows, multi-view, clips and raids.

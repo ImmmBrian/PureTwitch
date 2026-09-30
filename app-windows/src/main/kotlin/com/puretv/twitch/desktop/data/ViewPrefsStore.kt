@@ -59,6 +59,8 @@ data class ViewPrefs(
     val ignoredUsers: List<String> = emptyList(),
     /** Words that highlight a chat message (and copy it to the Mentions tab). */
     val highlightWords: List<String> = emptyList(),
+    /** The Personalize panel: accent, text size, density, rail, Home shelves, chat look. */
+    val look: Personalization = Personalization(),
 ) {
     val listSort: ListSort get() = runCatching { ListSort.valueOf(sort) }.getOrDefault(ListSort.VIEWERS)
     val miniSizeEnum: MiniSize get() = runCatching { MiniSize.valueOf(miniSize) }.getOrDefault(MiniSize.MEDIUM)
@@ -130,6 +132,10 @@ class ViewPrefsStore(
     fun setHighlightWords(words: List<String>) = edit { p ->
         p.copy(highlightWords = words.map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }.take(30))
     }
+
+    fun setLook(transform: (Personalization) -> Personalization) = edit { it.copy(look = transform(it.look)) }
+
+    fun resetLook() = edit { it.copy(look = Personalization()) }
 
     fun edit(transform: (ViewPrefs) -> ViewPrefs) = synchronized(lock) {
         val next = transform(_prefs.value)

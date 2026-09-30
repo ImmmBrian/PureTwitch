@@ -128,6 +128,9 @@ import com.puretv.twitch.desktop.ui.components.ExpressiveIcons
 import com.puretv.twitch.desktop.ui.components.ExpressiveSlider
 import com.puretv.twitch.desktop.ui.components.LivePill
 import com.puretv.twitch.desktop.ui.components.LocalBadgeIndex
+import com.puretv.twitch.desktop.ui.components.LocalChatAppearance
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
 import com.puretv.twitch.desktop.ui.components.PlayerSettingsMenu
 import com.puretv.twitch.desktop.ui.components.expressiveClickable
 import com.puretv.twitch.desktop.ui.components.expressiveSurface
@@ -651,7 +654,12 @@ internal fun LiveChatPanel(
                 .clip(RoundedCornerShape(CHAT_PANEL_RADIUS))
                 .background(c.surfaceContainer),
         ) {
-            CompositionLocalProvider(LocalBadgeIndex provides state.badges) {
+            // Chat text size (Personalize) scales only the message text.
+            val chatDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalBadgeIndex provides state.badges,
+                LocalDensity provides Density(chatDensity.density, chatDensity.fontScale * LocalChatAppearance.current.textScale),
+            ) {
                 when (chatTab) {
                     ChatTab.Chat -> ChatMessageList(
                         messages = visibleChat,

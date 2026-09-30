@@ -357,12 +357,21 @@ val LocalBadgeIndex = staticCompositionLocalOf { BadgeIndex.EMPTY }
 
 // ── Rich chat message row (timestamp · badges · emotes) ──────────────────────────
 
+/** Settings > Personalize > Chat. Provided at the app root; rows read it. */
+data class ChatAppearance(
+    val showTimestamps: Boolean = true,
+    val nameColors: com.puretv.twitch.desktop.data.ChatNameColors = com.puretv.twitch.desktop.data.ChatNameColors.TWITCH,
+    val textScale: Float = 1f,
+)
+
+val LocalChatAppearance = staticCompositionLocalOf { ChatAppearance() }
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatMessageRow(
     message: ChatMessage,
     modifier: Modifier = Modifier,
-    showTimestamps: Boolean = true,
+    showTimestamps: Boolean = LocalChatAppearance.current.showTimestamps,
     onReply: ((ChatMessage) -> Unit)? = null,
     onUserClick: ((ChatMessage) -> Unit)? = null,
 ) {
@@ -382,9 +391,14 @@ fun ChatMessageRow(
         return
     }
 
-    val nameColor = remember(message.color) {
-        runCatching { Color(AwtColor.decode(message.color).rgb or (0xFF shl 24)) }
-            .getOrDefault(c.primary)
+    val nameMode = LocalChatAppearance.current.nameColors
+    val nameColor = remember(message.color, nameMode, c.primary, c.onSurface) {
+        when (nameMode) {
+            com.puretv.twitch.desktop.data.ChatNameColors.ACCENT -> c.primary
+            com.puretv.twitch.desktop.data.ChatNameColors.PLAIN -> c.onSurface
+            com.puretv.twitch.desktop.data.ChatNameColors.TWITCH ->
+                runCatching { Color(AwtColor.decode(message.color).rgb or (0xFF shl 24)) }.getOrDefault(c.primary)
+        }
     }
     // Every row is its own rounded container rather than a flat line in a list. A
     // mention fills with the primary container so being pinged is legible at a

@@ -1,5 +1,7 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import com.puretv.twitch.desktop.ui.theme.gridColumns
+import com.puretv.twitch.desktop.ui.theme.LocalCompactLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -120,7 +122,7 @@ fun FollowingContent(koin: Koin, onOpenChannel: (String) -> Unit, onSignIn: () -
                             color = c.onSurfaceVariant,
                         )
                         layout == FollowingLayout.GRID -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            state.live.chunked(4).forEach { chunk ->
+                            state.live.chunked(gridColumns(4, LocalCompactLayout.current)).forEach { chunk ->
                                 LiveGridRow(chunk, onWatch)
                             }
                         }
@@ -241,7 +243,7 @@ private fun LiveGridRow(rowItems: List<FollowRow>, onOpenChannel: (String) -> Un
         rowItems.forEach { row ->
             LiveFollowCard(row, onClick = { onOpenChannel(row.login) }, modifier = Modifier.weight(1f))
         }
-        repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+        repeat((gridColumns(4, LocalCompactLayout.current) - rowItems.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
     }
 }
 

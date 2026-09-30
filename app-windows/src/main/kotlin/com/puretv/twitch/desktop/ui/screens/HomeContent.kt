@@ -1,5 +1,8 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import com.puretv.twitch.desktop.data.HomeSection
+import com.puretv.twitch.desktop.ui.theme.gridColumns
+import com.puretv.twitch.desktop.ui.theme.LocalCompactLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -136,7 +139,7 @@ fun HomeContent(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+        columns = GridCells.Fixed(gridColumns(4, LocalCompactLayout.current)),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 32.dp, end = 32.dp, top = 36.dp, bottom = 40.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -160,7 +163,16 @@ fun HomeContent(
 
             else -> {
                 val hero = featuredStream(following, topStreams)
-                if (hero != null) {
+                if (HomeSection.entries.none { prefs.look.showsHomeSection(it) }) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        EditorialEmptyState(
+                            kicker = "Home",
+                            title = "Every section is hidden",
+                            message = "Turn some back on in Settings, under Personalize.",
+                        )
+                    }
+                }
+                if (hero != null && prefs.look.showsHomeSection(HomeSection.HERO)) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         val isFollowed = followedChannels.any { it.login.equals(hero.login, ignoreCase = true) }
                         HomeHero(
@@ -180,7 +192,7 @@ fun HomeContent(
                     }
                 }
 
-                if (continueItems.isNotEmpty()) {
+                if (continueItems.isNotEmpty() && prefs.look.showsHomeSection(HomeSection.CONTINUE)) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(Modifier.padding(top = 20.dp)) {
                             SectionHeading(title = "Continue watching")
@@ -202,7 +214,7 @@ fun HomeContent(
                     }
                 }
 
-                if (prefs.history.isNotEmpty()) {
+                if (prefs.history.isNotEmpty() && prefs.look.showsHomeSection(HomeSection.RECENT)) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(Modifier.padding(top = 20.dp)) {
                             SectionHeading(
@@ -220,7 +232,7 @@ fun HomeContent(
                     }
                 }
 
-                if (following.isNotEmpty()) {
+                if (following.isNotEmpty() && prefs.look.showsHomeSection(HomeSection.FOLLOWS)) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(Modifier.padding(top = 20.dp)) {
                             SectionHeading(title = "From channels you follow")
@@ -247,7 +259,7 @@ fun HomeContent(
                     }
                 }
 
-                if (topStreams.isNotEmpty()) {
+                if (topStreams.isNotEmpty() && prefs.look.showsHomeSection(HomeSection.LIVE)) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Row(
                             modifier = Modifier.padding(top = 20.dp),
@@ -275,7 +287,7 @@ fun HomeContent(
                             onClick = { onWatch(stream.userLogin) },
                         )
                     }
-                } else if (following.isEmpty()) {
+                } else if (following.isEmpty() && topStreams.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         EditorialEmptyState(
                             kicker = "Nothing live",
