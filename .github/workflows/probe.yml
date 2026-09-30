@@ -1,0 +1,16 @@
+name: probe
+on:
+  push:
+    branches: [probe]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          q() { echo "=== $1"; curl -s -X POST https://gql.twitch.tv/gql -H "Client-ID: kimne78kx3ncx6brgo4mv6wki5h1ko" -H "Content-Type: application/json" --data "$2" | head -c 2500; echo; }
+          q panels '{"query":"query{user(login:\"shroud\"){panels{id type ... on DefaultPanel{title description imageURL linkURL}}}}"}'
+          q rules '{"query":"query{user(login:\"shroud\"){chatSettings{rules}}}"}'
+          q socials '{"query":"query{user(login:\"shroud\"){channel{socialMedias{name title url}}}}"}'
+          q gamecounts '{"query":"query{g0:game(id:\"509658\"){id viewersCount} g1:game(id:\"32982\"){id viewersCount}}"}'
+          q streamsAsc '{"query":"query{streams(first:3,options:{sort:VIEWER_COUNT_ASC,broadcasterLanguages:[EN],freeformTags:[\"chill\"]}){edges{cursor node{id title viewersCount createdAt broadcaster{id login displayName} game{id name} previewImageURL(width:440,height:248)}} pageInfo{hasNextPage}}}"}'
+          q gameStreams '{"query":"query{game(id:\"509658\"){streams(first:2,options:{sort:VIEWER_COUNT}){edges{cursor node{id viewersCount broadcaster{login}}} pageInfo{hasNextPage}}}}"}'
