@@ -11,11 +11,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           exec > probe-out.txt 2>&1
-          CID=0d3t2yyq8nxwbspxvxms81jcgq46l0
+          CID=bavzvkfu9qe7uvsqdhm94wi0xoql7c
           r() { echo "=== $1"; curl -s -X POST https://id.twitch.tv/oauth2/token $2; echo; }
           r no-secret "-d client_id=$CID -d grant_type=refresh_token -d refresh_token=abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef12"
           r placeholder-secret "-d client_id=$CID -d client_secret=PASTE_YOUR_CLIENT_SECRET_HERE -d grant_type=refresh_token -d refresh_token=abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef12"
-          r device "-d client_id=$CID -d scopes=user:read:follows"
+          echo "=== device"; curl -s -X POST https://id.twitch.tv/oauth2/device -d client_id=$CID -d scopes=user:read:follows | head -c 200; echo
       - run: |
           git config user.name probe; git config user.email probe@users.noreply.github.com
           git add probe-out.txt; git commit -m "probe output [skip ci]"; git push
