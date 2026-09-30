@@ -1,0 +1,21 @@
+=== clipsA
+{"data":{"user":{"clips":{"edges":[{"cursor":null,"node":{"id":"2425172862","slug":"TenaciousBoringCurlewOSfrog-kTbF5yY7AhC9Pf9k","title":"Hutch is getting so cooked LOL","viewCount":1092,"durationSeconds":30,"createdAt":"2026-09-23T19:23:41Z","thumbnailURL":"https://static-cdn.jtvnw.net/twitch-video-assets/twitch-vap-video-assets-prod-us-west-2/397240d5-55bf-4285-af88-10799afdae7d/landscape/thumb/thumb-0000000000-1920x1080.jpg","curator":{"displayName":"NoviceMedicalGrower"},"game":{"name":"WARDOGS"}}},{"cursor":null,"node":{"id":"2335111319","slug":"ObservantTransparentWalletTheTarFu-eQBjLLtUBSvE9RSB","title":"COCK","viewCount":954,"durationSeconds":22,"createdAt":"2026-09-29T22:50:02Z","thumbnailURL":"https://static-cdn.jtvnw.net/twitch-video-assets/twitch-vap-video-assets-prod-us-west-2/690cb80f-18d0-4f59-931e-ce73885007fd/landscape/thumb/thumb-0000000000-1920x1080.jpg","curator":{"displayName":"trione288"},"game":{"name":"WARDOGS"}}},{"cursor":"Mw==","node":{"id":"2448391628","slug":"FrigidUnsightlyCarabeefHeyGuys-iXF4SjIbUFO7Vn8-","title":"dunebougieshit","viewCount":551,"durationSeconds":60,"createdAt":"2026-09-24T20:55:43Z","thumbnailURL":"https://static-cdn.jtvnw.net/twitch-video-assets/twitch-vap-video-assets-prod-us-west-2/82161562-091f-4e68-9aa0-af1a8ed8cc15/landscape/thumb/thumb-0000000000-1920x1080.jpg","curator":{"displayName":"2high4thisSHIT"},"game":{"name":"WARDOGS"}}}],"pageInfo":{"hasNextPage":true}}}},"extensions":{"durationMilliseconds":88,"requestID":"01M3R484DQ4AA3736YBMN89JA1"}}
+=== clipsAll
+{"data":{"user":{"clips":{"edges":[{"node":{"slug":"TangentialBillowingJalapenoYee-ccA2oB1pEYh4CHWJ","title":"F Shroud","viewCount":562970}},{"node":{"slug":"SuccessfulEndearingPidgeonPunchTrees-46KXLAMeuS9kpp5Q","title":"it's gonna be over","viewCount":562632}}]}}},"extensions":{"durationMilliseconds":95,"requestID":"01M3R484K69E68QGNX4MJ3PRFZ"}}
+slug=TangentialBillowingJalapenoYee-ccA2oB1pEYh4CHWJ
+=== token
+{"data":{"clip":{"playbackAccessToken":{"signature":"679ccfb1479c231c8738e1b7e4a01882511b1def","value":"{\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"clip_uri\":\"https://d1ndex63qxojbr.cloudfront.net/nauth/5696a6a8-e053-4c2e-a54c-5ca62c48102e/landscape/avc/1080/index.mp4\",\"clip_slug\":\"TangentialBillowingJalapenoYee-ccA2oB1pEYh4CHWJ\",\"device_id\":null,\"expires\":1790809388,\"user_id\":\"\",\"version\":3}"},"videoQualities":[{"frameRate":0,"quality":"1080","sourceURL":"https://d1ndex63qxojbr.cloudfront.net/nauth/5696a6a8-e053-4c2e-a54c-5ca62c48102e/landscape/avc/1080/index.mp4"},{"frameRate":0,"quality":"720","sourceURL":"https://d1ndex63qxojbr.cloudfront.net/nauth/5696a6a8-e053-4c2e-a54c-5ca62c48102e/landscape/avc/720/index.mp4"},{"frameRate":0,"quality":"480","sourceURL":"https://d1ndex63qxojbr.cloudfront.net/nauth/5696a6a8-e053-4c2e-a54c-5ca62c48102e/landscape/avc/480/index.mp4"},{"frameRate":0,"quality":"360","sourceURL":"https://d1ndex63qxojbr.cloudfront.net/nauth/5696a6a8-e053-4c2e-a54c-5ca62c48102e/landscape/avc/360/index.mp4"}]}},"extensions":{"durationMilliseconds":80,"requestID":"01M3R484YTAZ7DZM1WXPKQ2Z0V"}}
+
+=== head
+HTTP/2 200 
+content-type: binary/octet-stream
+content-length: 28629058
+last-modified: Mon, 20 Apr 2026 23:16:50 GMT
+x-amz-server-side-encryption: aws:kms
+x-amz-server-side-encryption-aws-kms-key-id: arn:aws:kms:us-west-2:891377216288:key/f302e0bb-b04f-4ce4-bb1b-91366e28d294
+x-amz-server-side-encryption-bucket-key-enabled: true
+x-amz-version-id: 5W.Dg7tmsWtOMrKZk4Bl._hAsU3YD3W8
+=== head-nosig
+HTTP/2 401 
+server: CloudFront
+date: Wed, 30 Sep 2026 03:03:09 GMT
