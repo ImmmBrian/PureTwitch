@@ -11,6 +11,16 @@ release notes automatically.
 
 ---
 
+## 1.19.0 - 2026-09-30
+
+Stay signed in.
+
+### Fixed
+- **You stay signed in after restarting your PC.** PureTV now uses its own
+  Twitch app, so your login renews itself instead of expiring after about four
+  hours. It also renews while the app is open and after your PC wakes up.
+- You'll be asked to sign in once after this update. After that it sticks.
+
 ## 1.18.0 - 2026-09-30
 
 Search everything, a quick search bar, schedules and easier-to-read chat.

@@ -15,7 +15,13 @@ package com.puretv.twitch.core.api
  *      committed — see `core/build.gradle.kts`.
  */
 object TwitchConfig {
-    const val CLIENT_ID = "0d3t2yyq8nxwbspxvxms81jcgq46l0"
+    /**
+     * This fork's own Twitch app (KoroBrian), registered as a PUBLIC client so
+     * logins refresh without a client secret. Keep this value when syncing from
+     * upstream: upstream's ID is a confidential client whose refresh needs a
+     * secret this build doesn't have, which signs you out every ~4 hours.
+     */
+    const val CLIENT_ID = "bavzvkfu9qe7uvsqdhm94wi0xoql7c"
     const val PLACEHOLDER_CLIENT_ID = "YOUR_CLIENT_ID_HERE"
     /**
      * Required by Twitch's /oauth2/token endpoint. Injected at build time from
