@@ -32,6 +32,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import com.puretv.twitch.desktop.channel.ClipInfo
+import com.puretv.twitch.desktop.ui.screens.ClipPlayerContent
+import com.puretv.twitch.desktop.ui.screens.MultiViewContent
+import com.puretv.twitch.desktop.ui.screens.MultiViewController
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.runtime.collectAsState
@@ -113,6 +120,7 @@ enum class Destination(val label: String, val icon: ImageVector, val outlineIcon
     FOLLOWING("Following", ExpressiveIcons.Following, ExpressiveIcons.FollowingOutlined),
     BROWSE("Browse", ExpressiveIcons.Browse, ExpressiveIcons.BrowseOutlined),
     DISCOVER("Discover", ExpressiveIcons.Discover, ExpressiveIcons.DiscoverOutlined),
+    MULTIVIEW("Multi-view", ExpressiveIcons.MultiView, ExpressiveIcons.MultiViewOutlined),
     SEARCH("Search", ExpressiveIcons.Search, ExpressiveIcons.SearchOutlined),
     SETTINGS("Settings", ExpressiveIcons.Settings, ExpressiveIcons.SettingsOutlined),
     ACCOUNT("Account", ExpressiveIcons.Account, ExpressiveIcons.AccountOutlined),
@@ -124,6 +132,7 @@ private sealed class Route {
     data class Channel(val login: String) : Route()
     data class Stream(val login: String) : Route()
     data class Vod(val launch: VodLaunch) : Route()
+    data class Clip(val clips: List<ClipInfo>, val index: Int, val channelLogin: String) : Route()
 }
 
 private val RAIL_EXPANDED = 236.dp
@@ -193,25 +202,81 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                 route = Route.Stream(login)
             }
 
-            // A VOD needs the one shared player, so the live session closes first.
-            // The route switch waits two frames so the live video surface is fully
-            // removed before the VOD's surface attaches (mpv binds one window at a
+            // VODs and clips need the one shared player, so the live session closes
+            // first. The route switch waits two frames so the live video surface is
+            // fully removed before the new one attaches (mpv binds one window at a
             // time and would otherwise tear the new one down).
-            var pendingVod by remember { mutableStateOf<VodLaunch?>(null) }
-            fun openVod(launch: VodLaunch) {
+            var pendingRoute by remember { mutableStateOf<Route?>(null) }
+            fun openWithPlayer(target: Route) {
                 if (playbackHost.active != null) {
                     playbackHost.close()
-                    pendingVod = launch
+                    pendingRoute = target
                 } else {
-                    route = Route.Vod(launch)
+                    route = target
                 }
             }
-            LaunchedEffect(pendingVod) {
-                val launch = pendingVod ?: return@LaunchedEffect
+            fun openVod(launch: VodLaunch) = openWithPlayer(Route.Vod(launch))
+            LaunchedEffect(pendingRoute) {
+                val target = pendingRoute ?: return@LaunchedEffect
                 withFrameNanos { }
                 withFrameNanos { }
-                route = Route.Vod(launch)
-                pendingVod = null
+                route = target
+                pendingRoute = null
+            }
+
+            // Multi-view: the lineup lives here so it survives leaving the page.
+            // Its tiles have their own players, but the main stream would talk over
+            // them, so opening multi-view with channels in it ends the main session.
+            val multiView = remember { MultiViewController() }
+            fun openMultiView(addLogin: String?) {
+                addLogin?.let { multiView.add(it) }
+                playbackHost.close()
+                destination = Destination.MULTIVIEW
+                route = Route.Top
+            }
+            LaunchedEffect(route, destination, multiView.logins.size) {
+                if (route == Route.Top && destination == Destination.MULTIVIEW && multiView.logins.isNotEmpty()) {
+                    playbackHost.close()
+                }
+            }
+
+            // Raids: when the channel you're watching raids someone, follow them after
+            // the countdown the prompt shows, unless you pressed Stay (which clears it).
+            // Works docked too; the mini player just switches channel.
+            fun followRaid(login: String) {
+                val onStreamPage = route is Route.Stream
+                playbackHost.open(login)
+                if (onStreamPage) route = Route.Stream(login)
+            }
+            val activeSession = playbackHost.active
+            val raid by produceState<RaidNotice?>(initialValue = null, activeSession) {
+                value = null
+                activeSession?.viewModel?.state?.map { it.raid }?.distinctUntilChanged()?.collect { value = it }
+            }
+            LaunchedEffect(raid) {
+                val r = raid ?: return@LaunchedEffect
+                val wait = RAID_FOLLOW_SECONDS * 1000L - (System.currentTimeMillis() - r.receivedAtMillis)
+                if (wait > 0) delay(wait)
+                followRaid(r.toLogin)
+            }
+
+            // Pop-out player: hide the in-app video first, then open the window a
+            // couple of frames later (and the reverse on return), so there is never
+            // more than one native video surface. The player restarts the stream on
+            // whichever surface it lands on.
+            LaunchedEffect(playbackHost.popOutRequested) {
+                if (playbackHost.active == null) return@LaunchedEffect
+                if (playbackHost.popOutRequested) {
+                    playbackHost.overlaySuppressed = true
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    playbackHost.popOutWindowOpen = true
+                } else if (playbackHost.popOutWindowOpen) {
+                    playbackHost.popOutWindowOpen = false
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    playbackHost.overlaySuppressed = false
+                }
             }
 
             // Theater/fullscreen only make sense on the stream page.
@@ -329,6 +394,8 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                                 route = Route.Top
                                             },
                                             onOpenChannel = { login -> route = Route.Channel(login) },
+                                            onMultiView = { openMultiView(r.login) },
+                                            onFollowRaid = { login -> followRaid(login) },
                                         )
                                     } else {
                                         // Reached a stream route without a session (e.g. the
@@ -346,7 +413,14 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                     channelLogin = r.login,
                                     onWatch = { openStream(r.login) },
                                     onPlayVod = { launch -> openVod(launch) },
+                                    onPlayClip = { clips, index -> openWithPlayer(Route.Clip(clips, index, r.login)) },
                                     onBack = { route = Route.Top },
+                                )
+                                is Route.Clip -> ClipPlayerContent(
+                                    koin = koin,
+                                    clips = r.clips,
+                                    startIndex = r.index,
+                                    onBack = { route = Route.Channel(r.channelLogin) },
                                 )
                                 is Route.Category -> CategoryContent(
                                     koin = koin,
@@ -370,6 +444,11 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                                     )
                                     Destination.BROWSE -> BrowseContent(koin = koin, onOpenCategory = { gameId, gameName -> route = Route.Category(gameId, gameName) })
                                     Destination.DISCOVER -> DiscoverContent(koin = koin, onOpenChannel = { login -> watch(login) })
+                                    Destination.MULTIVIEW -> MultiViewContent(
+                                        koin = koin,
+                                        controller = multiView,
+                                        onWatchFull = { login -> openStream(login) },
+                                    )
                                     Destination.SEARCH -> SearchContent(
                                         koin = koin,
                                         onOpenChannel = { login -> route = Route.Channel(login) },
@@ -382,7 +461,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
 
                             // Off the stream page, a live session docks here.
                             val docked = playbackHost.active
-                            if (docked != null && route !is Route.Stream && pendingVod == null) {
+                            if (docked != null && route !is Route.Stream && pendingRoute == null && !playbackHost.popOutRequested) {
                                 MiniPlayerDock(
                                     host = playbackHost,
                                     player = player,
@@ -396,6 +475,27 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
 
                 // Last child of the window-filling Box, so window coordinates line up.
                 VideoOverlay(host = playbackHost, player = player)
+
+                // Separate OS windows; they take no space in this layout.
+                if (playbackHost.popOutWindowOpen) {
+                    PopOutPlayerWindow(
+                        host = playbackHost,
+                        player = player,
+                        onReturn = { playbackHost.popOutRequested = false },
+                    )
+                }
+                if (playbackHost.chatPoppedOut && playbackHost.active != null) {
+                    PopOutChatWindow(
+                        koin = koin,
+                        host = playbackHost,
+                        onReturn = { playbackHost.chatPoppedOut = false },
+                        onRequestSignIn = {
+                            destination = Destination.ACCOUNT
+                            route = Route.Top
+                        },
+                        onOpenChannel = { login -> route = Route.Channel(login) },
+                    )
+                }
               }
             }
         }

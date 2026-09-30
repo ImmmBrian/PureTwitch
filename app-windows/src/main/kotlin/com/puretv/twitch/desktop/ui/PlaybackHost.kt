@@ -73,7 +73,38 @@ class PlaybackHost(private val koin: Koin) {
     fun close() {
         active?.viewModel?.dispose()
         active = null
+        popOutRequested = false
+        popOutWindowOpen = false
+        overlaySuppressed = false
+        chatPoppedOut = false
+        chatInputFocused = false
     }
+
+    // ── Pop-out windows ──────────────────────────────────────────────────────
+
+    /**
+     * The user wants the video in its own always-on-top window. App turns this
+     * into [overlaySuppressed] then [popOutWindowOpen] a couple of frames apart,
+     * so only one native video window exists at any moment.
+     */
+    var popOutRequested by mutableStateOf(false)
+
+    /** The pop-out player window is on screen. */
+    var popOutWindowOpen by mutableStateOf(false)
+        internal set
+
+    /** The in-app video surface is held off while the video lives in (or moves to/from) the pop-out. */
+    var overlaySuppressed by mutableStateOf(false)
+        internal set
+
+    /** Chat is in its own window instead of beside the player. */
+    var chatPoppedOut by mutableStateOf(false)
+
+    /**
+     * A chat box (in the app or the pop-out chat window) has keyboard focus, so
+     * the player's single-key shortcuts (F, T, C, M, Space...) must stand down.
+     */
+    var chatInputFocused by mutableStateOf(false)
 
     // ── Slots ────────────────────────────────────────────────────────────────
 
@@ -146,7 +177,7 @@ fun VideoSlot(
  */
 @Composable
 fun VideoOverlay(host: PlaybackHost, player: DesktopPlayer) {
-    if (host.active == null) return
+    if (host.active == null || host.overlaySuppressed) return
     val slot = host.target
     val density = LocalDensity.current
     val bounds = slot?.bounds
@@ -179,3 +210,6 @@ fun VideoOverlay(host: PlaybackHost, player: DesktopPlayer) {
         )
     }
 }
+
+/** Seconds a raid prompt waits before following the raid on its own. */
+const val RAID_FOLLOW_SECONDS = 10

@@ -104,6 +104,9 @@ import com.puretv.twitch.desktop.ui.chat.mergeMentions
 import com.puretv.twitch.desktop.ui.LocalAppShell
 import com.puretv.twitch.desktop.ui.PlayerMode
 import com.puretv.twitch.desktop.ui.StreamViewModel
+import androidx.compose.runtime.produceState
+import com.puretv.twitch.desktop.ui.RAID_FOLLOW_SECONDS
+import com.puretv.twitch.desktop.ui.RaidNotice
 import com.puretv.twitch.desktop.ui.chat.ComposerKeyAction
 import com.puretv.twitch.desktop.ui.chat.completeWord
 import com.puretv.twitch.desktop.ui.chat.composerKeyAction
@@ -173,6 +176,8 @@ fun StreamContent(
     onBack: () -> Unit,
     onRequestSignIn: () -> Unit = {},
     onOpenChannel: (String) -> Unit = {},
+    onMultiView: () -> Unit = {},
+    onFollowRaid: (String) -> Unit = {},
 ) {
     // The ViewModel is owned by PlaybackHost, not this screen, so playback and chat
     // keep running in the mini player after this screen leaves composition.
@@ -194,7 +199,8 @@ fun StreamContent(
     val appSettings by settingsStore.settings.collectAsState()
     val shell = LocalAppShell.current
     val mode = shell.playerMode
-    val isChatOpen = shell.isChatOpen
+    // Chat in its own window counts as closed here, so the player takes the width.
+    val isChatOpen = shell.isChatOpen && !host.chatPoppedOut
     val c = PureTvTheme.colors
 
     // The App shell itself collapses its own outer inset and pane rounding to 0 in
@@ -246,9 +252,10 @@ fun StreamContent(
     // whether Compose or the Canvas currently holds focus, so the shortcuts can
     // never die. We skip it while the chat input is focused so typing, including
     // spaces and the letters f/t/c, still reaches the chat box.
-    var chatInputFocused by remember { mutableStateOf(false) }
+    // Typing in either chat box (here or the pop-out chat window) is tracked on the
+    // host so both can silence the shortcuts.
     val latestMode = rememberUpdatedState(mode)
-    val latestChatFocused = rememberUpdatedState(chatInputFocused)
+    val latestChatFocused = rememberUpdatedState(host.chatInputFocused)
     val latestUpscaling = rememberUpdatedState(appSettings.upscalingMode)
     val latestVolume = rememberUpdatedState(playerStatus.volume)
     // F3 toggles the mpv upscaling stats overlay. It's drawn by mpv's own OSD (the
@@ -260,6 +267,10 @@ fun StreamContent(
     DisposableEffect(Unit) {
         val dispatcher = KeyEventDispatcher { e ->
             if (latestChatFocused.value) return@KeyEventDispatcher false
+            // The dispatcher is app-wide: keys typed into the pop-out player or chat
+            // windows must not drive this page's shortcuts.
+            val source = (e.component as? java.awt.Window) ?: e.component?.let { javax.swing.SwingUtilities.getWindowAncestor(it) }
+            if (source != null && !shell.isMainWindow(source)) return@KeyEventDispatcher false
             // Hold-to-compare (X): preview Off while held, restore the saved mode on
             // release: instant live A/B of the upscaler. Handled before the
             // KEY_PRESSED gate so we also see KEY_RELEASED. (Windows AWT doesn't
@@ -375,8 +386,26 @@ fun StreamContent(
                                 canFollow = state.channel != null,
                                 onToggleFollow = viewModel::toggleFollow,
                                 onBack = onBack,
+                                onMultiView = onMultiView,
                                 radius = panelRadius,
                             )
+                        }
+
+                        // Raid prompt: pushes the video down (it can't be overlaid).
+                        val raid = state.raid
+                        AnimatedVisibility(
+                            visible = raid != null,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut(),
+                        ) {
+                            if (raid != null) {
+                                RaidBanner(
+                                    raid = raid,
+                                    onGo = { onFollowRaid(raid.toLogin) },
+                                    onStay = viewModel::dismissRaid,
+                                    radius = panelRadius,
+                                )
+                            }
                         }
 
                         // Video panel + playback settings menu, grouped as ONE child of the
@@ -420,6 +449,20 @@ fun StreamContent(
                                     state.playableUrl != null && state.currentQuality == StreamQuality.AUDIO_ONLY -> AudioOnlyPlaceholder(
                                         onShowVideo = viewModel::toggleAudioOnly,
                                     )
+                                    host.popOutRequested -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            "Playing in the pop-out window",
+                                            color = c.onSurfaceVariant,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                        ExpressiveButton(
+                                            text = "Bring it back",
+                                            onClick = { host.popOutRequested = false },
+                                            style = ExpressiveButtonStyle.Tonal,
+                                            icon = ExpressiveIcons.PopIn,
+                                        )
+                                    }
                                     state.playableUrl != null && docked -> Text(
                                         "Playing in the mini player",
                                         color = c.onSurfaceVariant,
@@ -491,6 +534,12 @@ fun StreamContent(
                                 onToggleChat = { shell.toggleChat() },
                                 onToggleTheater = { shell.setPlayerMode(if (mode == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER) },
                                 onToggleFullscreen = { shell.setPlayerMode(if (mode == PlayerMode.FULLSCREEN) PlayerMode.DEFAULT else PlayerMode.FULLSCREEN) },
+                                poppedOut = host.popOutRequested,
+                                onTogglePopOut = {
+                                    // Immersive modes make no sense with the video in another window.
+                                    shell.exitImmersive()
+                                    host.popOutRequested = !host.popOutRequested
+                                },
                                 radius = panelRadius,
                             )
                         }
@@ -508,7 +557,7 @@ fun StreamContent(
                     }
                 }
 
-                if (docked) {
+                if (docked && !host.popOutRequested) {
                     MiniPlayerDock(
                         host = host,
                         player = vlcPlayer,
@@ -524,89 +573,127 @@ fun StreamContent(
 
             // ── Chat panel ─────────────────────────────────────────────────────
             // Width animates 0↔392dp. clipToBounds() ensures content clips clean.
+            // Hidden entirely while chat is popped out into its own window.
             Box(
                 modifier = Modifier
                     .width(chatWidth)
                     .fillMaxHeight()
                     .clipToBounds(),
             ) {
-                Column(
+                LiveChatPanel(
+                    koin = koin,
+                    viewModel = viewModel,
+                    onClose = { shell.toggleChat() },
+                    onPopOut = { host.chatPoppedOut = true },
+                    poppedOut = false,
+                    onFocusChanged = { host.chatInputFocused = it },
+                    onRequestSignIn = onRequestSignIn,
+                    onOpenChannel = onOpenChannel,
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    var chatTab by remember { mutableStateOf(ChatTab.Chat) }
-                    // Ignore list + highlight words apply at display time, so changing
-                    // them updates the chat already on screen.
-                    val prefsStore = remember { koin.get<ViewPrefsStore>() }
-                    val prefs by prefsStore.prefs.collectAsState()
-                    val visibleChat = remember(state.chatMessages, prefs.ignoredUsers, prefs.highlightWords) {
-                        applyChatFilters(state.chatMessages, prefs.ignoredUsers, prefs.highlightWords)
-                    }
-                    val mentions = remember(state.mentionMessages, visibleChat, prefs.ignoredUsers) {
-                        mergeMentions(state.mentionMessages, visibleChat, prefs.ignoredUsers)
-                    }
-                    var userCard by remember { mutableStateOf<ChatMessage?>(null) }
+                )
+            }
+        }
+    }
+}
 
-                    ChatHeader(
-                        selected = chatTab,
-                        mentionCount = mentions.size,
-                        onSelectTab = { chatTab = it },
-                        onClose = { shell.toggleChat() },
+/**
+ * The live chat: Chat/Mentions tabs, the message list with user cards, and the
+ * composer. Shared by the stream page and the pop-out chat window, which is why
+ * it reads everything from [viewModel] rather than from its caller.
+ *
+ * @param poppedOut true inside the pop-out window: the header button then reads
+ *   "return to the app" and there is no separate close.
+ */
+@Composable
+internal fun LiveChatPanel(
+    koin: Koin,
+    viewModel: StreamViewModel,
+    onClose: () -> Unit,
+    onPopOut: () -> Unit,
+    poppedOut: Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+    onRequestSignIn: () -> Unit,
+    onOpenChannel: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val state by viewModel.state.collectAsState()
+    val c = PureTvTheme.colors
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        var chatTab by remember { mutableStateOf(ChatTab.Chat) }
+        // Ignore list + highlight words apply at display time, so changing
+        // them updates the chat already on screen.
+        val prefsStore = remember { koin.get<ViewPrefsStore>() }
+        val prefs by prefsStore.prefs.collectAsState()
+        val visibleChat = remember(state.chatMessages, prefs.ignoredUsers, prefs.highlightWords) {
+            applyChatFilters(state.chatMessages, prefs.ignoredUsers, prefs.highlightWords)
+        }
+        val mentions = remember(state.mentionMessages, visibleChat, prefs.ignoredUsers) {
+            mergeMentions(state.mentionMessages, visibleChat, prefs.ignoredUsers)
+        }
+        var userCard by remember { mutableStateOf<ChatMessage?>(null) }
+
+        ChatHeader(
+            selected = chatTab,
+            mentionCount = mentions.size,
+            onSelectTab = { chatTab = it },
+            onClose = if (poppedOut) null else onClose,
+            onPopOut = onPopOut,
+            poppedOut = poppedOut,
+        )
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(CHAT_PANEL_RADIUS))
+                .background(c.surfaceContainer),
+        ) {
+            CompositionLocalProvider(LocalBadgeIndex provides state.badges) {
+                when (chatTab) {
+                    ChatTab.Chat -> ChatMessageList(
+                        messages = visibleChat,
+                        onReply = viewModel::startReply,
+                        onUserClick = { userCard = it },
+                        modifier = Modifier.fillMaxSize(),
                     )
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(CHAT_PANEL_RADIUS))
-                            .background(c.surfaceContainer),
-                    ) {
-                        CompositionLocalProvider(LocalBadgeIndex provides state.badges) {
-                            when (chatTab) {
-                                ChatTab.Chat -> ChatMessageList(
-                                    messages = visibleChat,
-                                    onReply = viewModel::startReply,
-                                    onUserClick = { userCard = it },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                ChatTab.Mentions ->
-                                    if (mentions.isEmpty()) {
-                                        MentionsEmptyState(Modifier.fillMaxSize())
-                                    } else {
-                                        ChatMessageList(
-                                            messages = mentions,
-                                            onReply = viewModel::startReply,
-                                            onUserClick = { userCard = it },
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    }
-                            }
-                            userCard?.let { picked ->
-                                ChatUserCard(
-                                    message = picked,
-                                    recent = state.chatMessages.filter { it.username.equals(picked.username, ignoreCase = true) && !it.isSystem },
-                                    ignored = picked.username.lowercase() in prefs.ignoredUsers,
-                                    onToggleIgnore = { ignore -> prefsStore.setIgnored(picked.username, ignore) },
-                                    onOpenChannel = { userCard = null; onOpenChannel(picked.username) },
-                                    onClose = { userCard = null },
-                                    modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
-                                )
-                            }
+                    ChatTab.Mentions ->
+                        if (mentions.isEmpty()) {
+                            MentionsEmptyState(Modifier.fillMaxSize())
+                        } else {
+                            ChatMessageList(
+                                messages = mentions,
+                                onReply = viewModel::startReply,
+                                onUserClick = { userCard = it },
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
-                    }
-
-                    ChatInputBar(
-                        canChat = state.canChat,
-                        emotes = state.emotes,
-                        replyingTo = state.replyingTo,
-                        onCancelReply = viewModel::cancelReply,
-                        onSend = viewModel::sendChatMessage,
-                        onFocusChanged = { chatInputFocused = it },
-                        onRequestSignIn = onRequestSignIn,
+                }
+                userCard?.let { picked ->
+                    ChatUserCard(
+                        message = picked,
+                        recent = state.chatMessages.filter { it.username.equals(picked.username, ignoreCase = true) && !it.isSystem },
+                        ignored = picked.username.lowercase() in prefs.ignoredUsers,
+                        onToggleIgnore = { ignore -> prefsStore.setIgnored(picked.username, ignore) },
+                        onOpenChannel = { userCard = null; onOpenChannel(picked.username) },
+                        onClose = { userCard = null },
+                        modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
                     )
                 }
             }
         }
+
+        ChatInputBar(
+            canChat = state.canChat,
+            emotes = state.emotes,
+            replyingTo = state.replyingTo,
+            onCancelReply = viewModel::cancelReply,
+            onSend = viewModel::sendChatMessage,
+            onFocusChanged = onFocusChanged,
+            onRequestSignIn = onRequestSignIn,
+        )
     }
 }
 
@@ -702,6 +789,45 @@ private fun StreamAboutSection(
     }
 }
 
+// ── Raid prompt ───────────────────────────────────────────────────────────────
+
+/**
+ * "X is raiding Y": counts down to following the raid automatically (App does
+ * the actual switch at [RAID_FOLLOW_SECONDS]), with Go now / Stay.
+ */
+@Composable
+private fun RaidBanner(raid: RaidNotice, onGo: () -> Unit, onStay: () -> Unit, radius: Dp) {
+    val c = PureTvTheme.colors
+    val remaining by produceState(initialValue = RAID_FOLLOW_SECONDS, raid) {
+        while (true) {
+            val left = RAID_FOLLOW_SECONDS - ((System.currentTimeMillis() - raid.receivedAtMillis) / 1000).toInt()
+            value = left.coerceAtLeast(0)
+            if (left <= 0) break
+            delay(250)
+        }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(radius))
+            .background(c.primaryContainer)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Raiding ${raid.toName}" + if (raid.viewers > 0) " with ${formatViewerCount(raid.viewers)} viewers" else "",
+                style = MaterialTheme.typography.titleMedium,
+                color = c.onPrimaryContainer,
+            )
+            Text("Following in ${remaining}s", style = PureTvType.data, color = c.onPrimaryContainer.copy(alpha = 0.8f))
+        }
+        ExpressiveButton(text = "Go now", onClick = onGo, style = ExpressiveButtonStyle.Filled, size = ExpressiveButtonSize.Small)
+        ExpressiveButton(text = "Stay", onClick = onStay, style = ExpressiveButtonStyle.Outlined, size = ExpressiveButtonSize.Small)
+    }
+}
+
 // ── Top bar ────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -715,6 +841,7 @@ private fun TopBar(
     canFollow: Boolean,
     onToggleFollow: () -> Unit,
     onBack: () -> Unit,
+    onMultiView: () -> Unit,
     radius: Dp,
 ) {
     val c = PureTvTheme.colors
@@ -755,6 +882,12 @@ private fun TopBar(
             }
         }
         AdBlockPill(adBlockStatus)
+        ExpressiveIconButton(
+            icon = ExpressiveIcons.MultiView,
+            contentDescription = "Watch in multi-view",
+            onClick = onMultiView,
+            style = ExpressiveButtonStyle.Tonal,
+        )
         ExpressiveButton(
             text = if (isFollowed) "Following" else "Follow",
             onClick = onToggleFollow,
@@ -785,6 +918,8 @@ private fun PlaybackControls(
     onToggleChat: () -> Unit,
     onToggleTheater: () -> Unit,
     onToggleFullscreen: () -> Unit,
+    poppedOut: Boolean,
+    onTogglePopOut: () -> Unit,
     radius: Dp,
 ) {
     val c = PureTvTheme.colors
@@ -818,6 +953,8 @@ private fun PlaybackControls(
             onToggleChat = onToggleChat,
             onToggleTheater = onToggleTheater,
             onToggleFullscreen = onToggleFullscreen,
+            poppedOut = poppedOut,
+            onTogglePopOut = onTogglePopOut,
         )
     }
 }
@@ -891,6 +1028,8 @@ private fun ConnectedControlsGroup(
     onToggleChat: () -> Unit,
     onToggleTheater: () -> Unit,
     onToggleFullscreen: () -> Unit,
+    poppedOut: Boolean,
+    onTogglePopOut: () -> Unit,
 ) {
     val c = PureTvTheme.colors
     Row(
@@ -911,6 +1050,13 @@ private fun ConnectedControlsGroup(
         ControlsGroupButton(ExpressiveIcons.Settings, "Playback settings", onToggleSettings, tint = if (settingsOpen) c.primary else null)
         GroupDivider()
         ControlsGroupButton(ExpressiveIcons.Chat, "Toggle chat", onToggleChat, tint = if (isChatOpen) c.primary else null)
+        GroupDivider()
+        ControlsGroupButton(
+            ExpressiveIcons.PopOutPlayer,
+            if (poppedOut) "Bring the player back" else "Pop out player (stays on top)",
+            onTogglePopOut,
+            tint = if (poppedOut) c.primary else null,
+        )
         GroupDivider()
         ControlsGroupButton(ExpressiveIcons.AspectRatio, "Theater mode", onToggleTheater, tint = if (mode == PlayerMode.THEATER) c.primary else null)
         GroupDivider()
@@ -964,7 +1110,9 @@ private fun ChatHeader(
     selected: ChatTab,
     mentionCount: Int,
     onSelectTab: (ChatTab) -> Unit,
-    onClose: () -> Unit,
+    onClose: (() -> Unit)?,
+    onPopOut: () -> Unit,
+    poppedOut: Boolean,
 ) {
     val c = PureTvTheme.colors
     Row(
@@ -979,12 +1127,21 @@ private fun ChatHeader(
     ) {
         ChatTabToggle(selected = selected, mentionCount = mentionCount, onSelect = onSelectTab, modifier = Modifier.weight(1f))
         ExpressiveIconButton(
-            icon = ExpressiveIcons.Close,
-            contentDescription = "Close chat",
-            onClick = onClose,
+            icon = if (poppedOut) ExpressiveIcons.PopIn else ExpressiveIcons.PopOut,
+            contentDescription = if (poppedOut) "Put chat back in the app" else "Pop out chat",
+            onClick = onPopOut,
             boxSize = 48.dp,
             iconSize = 22.dp,
         )
+        if (onClose != null) {
+            ExpressiveIconButton(
+                icon = ExpressiveIcons.Close,
+                contentDescription = "Close chat",
+                onClick = onClose,
+                boxSize = 48.dp,
+                iconSize = 22.dp,
+            )
+        }
     }
 }
 

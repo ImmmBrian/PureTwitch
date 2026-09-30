@@ -147,8 +147,19 @@ class VlcPlayer : DesktopPlayer {
         // isDisplayable here to avoid setting a stale surface, AND the play()
         // call below re-checks just before VLC dereferences the handle.
         if (!panel.isDisplayable) return
+        val previous = attachedComponent
         mp.videoSurface().set(f.videoSurfaces().newVideoSurface(panel))
         attachedComponent = panel
+        // Moving to a DIFFERENT live surface (the pop-out player window and back):
+        // libVLC keeps rendering into the old, now-destroyed window, so restart the
+        // current URL on the new one. Same-surface re-attaches never reach here
+        // (short-circuited above), and a first attach falls to the drain below.
+        if (previous != null && currentUrl != null) {
+            val url = currentUrl!!
+            runCatching { mp.media().play(url) }
+                .onFailure { e -> _status.update { it.copy(error = "Player attach race: ${e.message}") } }
+            return
+        }
         // Drain any URL that was queued by `play()` before we had a surface to
         // render into — common on first stream open, where ViewModel.init
         // calls play() one EDT-tick before SwingPanel's HierarchyListener fires.

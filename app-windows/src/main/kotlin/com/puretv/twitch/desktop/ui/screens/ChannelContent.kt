@@ -50,6 +50,7 @@ import com.puretv.twitch.desktop.ui.components.ExpressiveIconButton
 import com.puretv.twitch.desktop.ui.components.ExpressiveIcons
 import com.puretv.twitch.desktop.ui.components.ExpressivePanel
 import com.puretv.twitch.desktop.ui.components.MarkdownText
+import com.puretv.twitch.desktop.channel.ClipInfo
 import com.puretv.twitch.desktop.ui.components.LivePill
 import com.puretv.twitch.desktop.ui.components.expressiveSurface
 import com.puretv.twitch.desktop.ui.components.formatViewerCount
@@ -72,7 +73,14 @@ import org.koin.core.parameter.parametersOf
  * that lives in [ChannelStatsPanel], which polls independently.
  */
 @Composable
-fun ChannelContent(koin: Koin, channelLogin: String, onWatch: () -> Unit, onPlayVod: (VodLaunch) -> Unit, onBack: () -> Unit) {
+fun ChannelContent(
+    koin: Koin,
+    channelLogin: String,
+    onWatch: () -> Unit,
+    onPlayVod: (VodLaunch) -> Unit,
+    onBack: () -> Unit,
+    onPlayClip: (List<ClipInfo>, Int) -> Unit = { _, _ -> },
+) {
     val viewModel = rememberDesktopViewModel(channelLogin) {
         koin.get<ChannelViewModel> { parametersOf(channelLogin) }
     }
@@ -126,6 +134,12 @@ fun ChannelContent(koin: Koin, channelLogin: String, onWatch: () -> Unit, onPlay
                     channel?.id?.let { userId ->
                         PastBroadcastsSection(koin = koin, userId = userId, channelLogin = channelLogin, onPlayVod = onPlayVod)
                     }
+                    ClipsSection(
+                        koin = koin,
+                        channelLogin = channelLogin,
+                        onPlayClip = onPlayClip,
+                        modifier = Modifier.padding(top = 28.dp),
+                    )
                 }
                 ChannelStatsPanel(koin = koin, channelLogin = channelLogin)
             }

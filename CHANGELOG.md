@@ -11,6 +11,25 @@ release notes automatically.
 
 ---
 
+## 1.15.0 - 2026-09-30
+
+Pop-out windows, multi-view, clips and raids.
+
+### New
+- **Pop-out player.** Put the stream in its own window that stays on top of
+  other apps. "Back to app" (or closing it) returns it.
+- **Pop-out chat.** Chat in its own window, handy on a second monitor.
+- **Multi-view.** Watch up to four streams at once from the new Multi-view tab,
+  or the button on any stream. Click a stream to hear it.
+- **Clips.** Channel pages list the most-viewed clips from the last 7 days,
+  30 days or all time. Play them with next/previous and autoplay.
+- **Follow raids.** When the channel you're watching raids someone, PureTV
+  follows along after 10 seconds unless you press Stay (needs sign-in).
+
+### Improved
+- **Home's follow shelf** now shows your real Twitch follows that are live, not
+  just channels followed inside PureTV.
+
 ## 1.14.0 - 2026-09-30
 
 A round of quality-of-life upgrades across the whole app.

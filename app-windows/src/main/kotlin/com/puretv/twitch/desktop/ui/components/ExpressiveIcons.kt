@@ -15,6 +15,13 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.ViewQuilt
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.outlined.ViewQuilt
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
@@ -123,6 +130,14 @@ object ExpressiveIcons {
     val Expand: ImageVector = Icons.Filled.OpenInFull
     val ScrollTop: ImageVector = Icons.Filled.VerticalAlignTop
     val DragHandle: ImageVector = Icons.Filled.DragIndicator
+    val Previous: ImageVector = Icons.Filled.SkipPrevious
+    val Next: ImageVector = Icons.Filled.SkipNext
+    val PopOut: ImageVector = Icons.Filled.OpenInBrowser
+    val PopIn: ImageVector = Icons.Filled.PictureInPictureAlt
+    val PopOutPlayer: ImageVector = Icons.Filled.PictureInPictureAlt
+    val MultiView: ImageVector = Icons.Filled.ViewQuilt
+    val MultiViewOutlined: ImageVector = Icons.Outlined.ViewQuilt
+    val Clip: ImageVector = Icons.Filled.Movie
     val AudioOnly: ImageVector = Icons.Filled.Headphones
     val Resize: ImageVector = Icons.Filled.PhotoSizeSelectLarge
     val Pin: ImageVector = Icons.Filled.PushPin

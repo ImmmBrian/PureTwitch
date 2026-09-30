@@ -7,6 +7,8 @@ import com.puretv.twitch.desktop.data.ViewPrefsStore
 import com.puretv.twitch.desktop.data.HistoryEntry
 import com.puretv.twitch.desktop.discover.DiscoverRepository
 import com.puretv.twitch.desktop.discover.TwitchDirectoryGql
+import com.puretv.twitch.desktop.channel.RaidWatcher
+import com.puretv.twitch.core.di.TokenHolder
 import com.puretv.twitch.core.api.TwitchApiClient
 import com.puretv.twitch.core.repository.ChannelRepository
 import com.puretv.twitch.desktop.data.ViewerHistoryStore
@@ -102,6 +104,8 @@ val desktopModule = module {
     }
     // Directory reads Helix can't do (category viewer totals, lowest-first stream scans).
     single { TwitchDirectoryGql(get()) }
+    // Raid alerts over Twitch's EventSub WebSocket; needs the signed-in user's token.
+    single { val holder = get<TokenHolder>(); RaidWatcher(get()) { holder.current() } }
     single { DiscoverRepository(get<TwitchApiClient>(), get<TwitchDirectoryGql>()) }
     factory {
         val gql = get<TwitchDirectoryGql>()
@@ -134,6 +138,7 @@ val desktopModule = module {
         val prefs = get<ViewPrefsStore>()
         StreamViewModel(
             channelLogin, get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            raids = get(),
             onWatched = { ch, info ->
                 prefs.recordWatch(
                     HistoryEntry(

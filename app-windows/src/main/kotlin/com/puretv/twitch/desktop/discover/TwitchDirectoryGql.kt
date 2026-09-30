@@ -4,6 +4,12 @@ import com.puretv.twitch.core.api.StreamPage
 import com.puretv.twitch.core.api.TwitchConfig
 import com.puretv.twitch.core.model.StreamInfo
 import com.puretv.twitch.desktop.channel.ChannelExtras
+import com.puretv.twitch.desktop.channel.ClipPage
+import com.puretv.twitch.desktop.channel.ClipPeriod
+import com.puretv.twitch.desktop.channel.buildClipPlaybackQuery
+import com.puretv.twitch.desktop.channel.buildClipsQuery
+import com.puretv.twitch.desktop.channel.parseClipPage
+import com.puretv.twitch.desktop.channel.parseClipPlaybackUrl
 import com.puretv.twitch.desktop.channel.buildChannelExtrasQuery
 import com.puretv.twitch.desktop.channel.parseChannelExtras
 import io.ktor.client.HttpClient
@@ -79,6 +85,14 @@ class TwitchDirectoryGql(
     /** A channel's info panels and chat rules. Best-effort: partial answers are kept. */
     suspend fun channelExtras(login: String): ChannelExtras =
         parseChannelExtras(post(buildChannelExtrasQuery(login)))
+
+    /** One page of a channel's most-viewed clips in [period]. */
+    suspend fun channelClips(login: String, period: ClipPeriod, after: String? = null): ClipPage =
+        parseClipPage(post(buildClipsQuery(login, period, after)))
+
+    /** A playable, signed MP4 URL for the clip, or null if Twitch won't serve it. */
+    suspend fun clipPlaybackUrl(slug: String, maxQuality: Int = 1080): String? =
+        parseClipPlaybackUrl(post(buildClipPlaybackQuery(slug)), maxQuality)
 
     companion object {
         const val PAGE_SIZE = 30

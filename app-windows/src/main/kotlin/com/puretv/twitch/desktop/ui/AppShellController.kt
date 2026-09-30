@@ -94,6 +94,9 @@ class AppShellController(
 
     fun toggleChat() { isChatOpenState = !isChatOpenState }
 
+    /** True for the app's main window (not the pop-out player or chat windows). */
+    fun isMainWindow(w: Window?): Boolean = w === window
+
     fun exitImmersive() {
         if (playerMode != PlayerMode.DEFAULT) setPlayerMode(PlayerMode.DEFAULT)
     }

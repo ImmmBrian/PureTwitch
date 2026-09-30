@@ -45,6 +45,7 @@ import com.puretv.twitch.desktop.player.LocalStreamProxy
 import com.puretv.twitch.desktop.player.PlaybackStallWatchdog
 import com.puretv.twitch.desktop.player.ProxyUnavailableException
 import com.puretv.twitch.desktop.player.DesktopPlayer
+import com.puretv.twitch.desktop.channel.RaidWatcher
 import com.puretv.twitch.desktop.ui.chat.ChatModeration
 import com.puretv.twitch.desktop.ui.chat.buildSelfEcho
 import io.ktor.client.HttpClient
@@ -358,7 +359,12 @@ data class StreamUiState(
     /** A stream-level fatal error (e.g. the local proxy port is in use). Distinct from
      *  a transient player-engine error; shown in place of the video with priority. */
     val fatalError: String? = null,
+    /** Set when this channel raids someone; the UI offers (and counts down to) following it. */
+    val raid: RaidNotice? = null,
 )
+
+/** A raid out of the channel being watched, with when we heard about it (for the countdown). */
+data class RaidNotice(val toLogin: String, val toName: String, val viewers: Int, val receivedAtMillis: Long)
 
 class StreamViewModel(
     private val channelLogin: String,
@@ -374,6 +380,8 @@ class StreamViewModel(
     private val apiClient: TwitchApiClient,
     private val sevenTvEventClient: SevenTvEventClient,
     private val badgeRepository: BadgeRepository,
+    /** Raid alerts (EventSub). Null in tests and when unavailable. */
+    private val raids: RaidWatcher? = null,
     /** Called once the channel has loaded, to record it in watch history. */
     private val onWatched: (ChannelInfo, StreamInfo?) -> Unit = { _, _ -> },
 ) : DesktopViewModel() {
@@ -455,6 +463,17 @@ class StreamViewModel(
                 it.copy(channel = channel, streamInfo = liveInfo, currentQuality = preferredQuality, isLoading = false)
             }
             channel?.let { ch -> runCatching { onWatched(ch, liveInfo) } }
+
+            // Listen for this channel raiding someone else, so the viewer can follow.
+            if (raids != null && channel != null) {
+                scope.launch {
+                    raids.watch(channel.id).collect { ev ->
+                        if (!ev.toLogin.equals(channelLogin, ignoreCase = true)) {
+                            _state.update { it.copy(raid = RaidNotice(ev.toLogin, ev.toName, ev.viewers, System.currentTimeMillis())) }
+                        }
+                    }
+                }
+            }
 
             // Badge art only needs the channel id, not the emote lists below, so fetch it
             // on its own coroutine instead of waiting behind the sequential emote-loading
@@ -601,6 +620,11 @@ class StreamViewModel(
         playbackStallWatchdog.reset()
         _state.update { it.copy(playableUrl = url, currentQuality = quality) }
         vlcPlayer.play(url)
+    }
+
+    /** "Stay": keep watching this channel and drop the raid prompt. */
+    fun dismissRaid() {
+        _state.update { it.copy(raid = null) }
     }
 
     fun setQuality(quality: StreamQuality) {

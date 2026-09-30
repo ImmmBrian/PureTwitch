@@ -53,6 +53,9 @@ import com.puretv.twitch.desktop.data.WatchProgress
 import com.puretv.twitch.desktop.data.WatchProgressStore
 import com.puretv.twitch.desktop.ui.FollowCardState
 import com.puretv.twitch.desktop.ui.HomeViewModel
+import androidx.compose.runtime.LaunchedEffect
+import com.puretv.twitch.core.follows.FollowRow
+import com.puretv.twitch.desktop.ui.FollowedRailViewModel
 import com.puretv.twitch.desktop.ui.VodLaunch
 import com.puretv.twitch.desktop.ui.components.Avatar
 import com.puretv.twitch.desktop.ui.components.CoverImage
@@ -105,6 +108,14 @@ fun HomeContent(
     val viewModel = rememberDesktopViewModel { koin.get<HomeViewModel>() }
     val state by viewModel.state.collectAsState()
 
+    // One follow list everywhere: your real Twitch follows (via the rail's loader,
+    // which also unions PureTV's local follows) for who's live, plus local follows
+    // that are offline. Before, this shelf showed only the local list.
+    val rail = rememberDesktopViewModel { koin.get<FollowedRailViewModel>() }
+    val railState by rail.state.collectAsState()
+    LaunchedEffect(Unit) { rail.refresh() }
+    val following = remember(state.following, railState.live) { mergeFollowShelf(state.following, railState.live) }
+
     val watchStore = remember { koin.get<WatchProgressStore>() }
     val progressMap by watchStore.progress.collectAsState()
     val continueItems = remember(progressMap) { watchStore.continueWatching() }
@@ -148,7 +159,7 @@ fun HomeContent(
             }
 
             else -> {
-                val hero = featuredStream(state.following, topStreams)
+                val hero = featuredStream(following, topStreams)
                 if (hero != null) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         val isFollowed = followedChannels.any { it.login.equals(hero.login, ignoreCase = true) }
@@ -209,7 +220,7 @@ fun HomeContent(
                     }
                 }
 
-                if (state.following.isNotEmpty()) {
+                if (following.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(Modifier.padding(top = 20.dp)) {
                             SectionHeading(title = "From channels you follow")
@@ -218,7 +229,7 @@ fun HomeContent(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                             ) {
-                                items(state.following, key = { "fav_${it.login}" }) { ch ->
+                                items(following, key = { "fav_${it.login}" }) { ch ->
                                     StreamGridCard(
                                         channelName = ch.displayName,
                                         avatarUrl = ch.avatarUrl.takeIf { it.isNotBlank() },
@@ -264,7 +275,7 @@ fun HomeContent(
                             onClick = { onWatch(stream.userLogin) },
                         )
                     }
-                } else if (state.following.isEmpty()) {
+                } else if (following.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         EditorialEmptyState(
                             kicker = "Nothing live",
@@ -680,4 +691,25 @@ internal fun timeAgo(epochMs: Long, now: Long = System.currentTimeMillis()): Str
         mins < 60 * 24 -> "${mins / 60}h ago"
         else -> "${mins / (60 * 24)}d ago"
     }
+}
+
+
+/** Live follows (Twitch and local, most viewers first), then offline local follows. */
+internal fun mergeFollowShelf(local: List<FollowCardState>, liveFollows: List<FollowRow>): List<FollowCardState> {
+    val live = (liveFollows.map {
+        FollowCardState(
+            login = it.login,
+            displayName = it.displayName,
+            avatarUrl = it.avatarUrl.orEmpty(),
+            isLive = true,
+            viewerCount = it.viewerCount,
+            title = it.title,
+            gameName = it.gameName,
+            thumbnailUrl = it.thumbnailUrl,
+        )
+    } + local.filter { it.isLive })
+        .distinctBy { it.login.lowercase() }
+        .sortedByDescending { it.viewerCount }
+    val liveLogins = live.map { it.login.lowercase() }.toSet()
+    return live + local.filter { !it.isLive && it.login.lowercase() !in liveLogins }
 }
