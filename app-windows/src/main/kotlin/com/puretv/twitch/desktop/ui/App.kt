@@ -353,12 +353,11 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                             // Off the stream page, a live session docks here.
                             val docked = playbackHost.active
                             if (docked != null && route !is Route.Stream && pendingVod == null) {
-                                MiniPlayer(
+                                MiniPlayerDock(
                                     host = playbackHost,
                                     player = player,
                                     onExpand = { route = Route.Stream(docked.login) },
                                     onClose = { playbackHost.close() },
-                                    modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
                                 )
                             }
                         }

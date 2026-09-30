@@ -49,6 +49,7 @@ import com.puretv.twitch.desktop.ui.components.ExpressiveChipRow
 import com.puretv.twitch.desktop.ui.components.ExpressiveIconButton
 import com.puretv.twitch.desktop.ui.components.ExpressiveIcons
 import com.puretv.twitch.desktop.ui.components.ExpressivePanel
+import com.puretv.twitch.desktop.ui.components.MarkdownText
 import com.puretv.twitch.desktop.ui.components.LivePill
 import com.puretv.twitch.desktop.ui.components.expressiveSurface
 import com.puretv.twitch.desktop.ui.components.formatViewerCount
@@ -120,6 +121,7 @@ fun ChannelContent(koin: Koin, channelLogin: String, onWatch: () -> Unit, onPlay
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
                     AboutPanel(channel?.description)
+                    ChannelExtrasSection(koin = koin, channelLogin = channelLogin, modifier = Modifier.padding(top = 16.dp))
                     Spacer(Modifier.height(28.dp))
                     channel?.id?.let { userId ->
                         PastBroadcastsSection(koin = koin, userId = userId, channelLogin = channelLogin, onPlayVod = onPlayVod)
@@ -258,11 +260,15 @@ private fun AboutPanel(description: String?) {
             Text("About", style = MaterialTheme.typography.titleLarge, color = c.onSurface)
             Spacer(Modifier.height(12.dp))
             val text = description?.takeIf { it.isNotBlank() }
-            Text(
-                text ?: "This channel hasn't written a bio yet.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (text != null) c.onSurfaceVariant else c.outline,
-            )
+            if (text != null) {
+                MarkdownText(text)
+            } else {
+                Text(
+                    "This channel hasn't written a bio yet.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = c.outline,
+                )
+            }
         }
     }
 }

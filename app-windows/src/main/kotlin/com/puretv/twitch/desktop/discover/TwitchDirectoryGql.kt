@@ -3,6 +3,9 @@ package com.puretv.twitch.desktop.discover
 import com.puretv.twitch.core.api.StreamPage
 import com.puretv.twitch.core.api.TwitchConfig
 import com.puretv.twitch.core.model.StreamInfo
+import com.puretv.twitch.desktop.channel.ChannelExtras
+import com.puretv.twitch.desktop.channel.buildChannelExtrasQuery
+import com.puretv.twitch.desktop.channel.parseChannelExtras
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.header
@@ -72,6 +75,10 @@ class TwitchDirectoryGql(
         after: String?,
         first: Int = PAGE_SIZE,
     ): StreamPage = parseStreamsPage(post(buildStreamsQuery(gameId, languageEnum, tags, ascending, after, first)), gameScoped = gameId != null)
+
+    /** A channel's info panels and chat rules. Best-effort: partial answers are kept. */
+    suspend fun channelExtras(login: String): ChannelExtras =
+        parseChannelExtras(post(buildChannelExtrasQuery(login)))
 
     companion object {
         const val PAGE_SIZE = 30

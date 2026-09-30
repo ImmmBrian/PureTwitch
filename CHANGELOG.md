@@ -11,6 +11,17 @@ release notes automatically.
 
 ---
 
+## 1.13.0 - 2026-09-30
+
+Move the mini player anywhere, and see everything a channel shows under its stream.
+
+### New
+- **Drag the mini player.** Grab its title bar and put it wherever you like. It
+  stays there as you move between pages.
+- **Channel panels and rules.** Scroll down on a stream (or open a channel page)
+  to see the streamer's info panels, their chat rules, and clickable links from
+  the panels and bio.
+
 ## 1.12.0 - 2026-09-30
 
 A mini player, a scrollable stream page, a new Discover tab, and viewer

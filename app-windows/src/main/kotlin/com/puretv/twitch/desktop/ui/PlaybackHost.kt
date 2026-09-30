@@ -58,6 +58,13 @@ class PlaybackHost(private val koin: Koin) {
         active = ActiveStream(login, koin.get<StreamViewModel> { parametersOf(login) })
     }
 
+    /**
+     * Where the user dragged the mini player, in px from its default bottom-right
+     * spot (so both values are <= 0). Shared by every page that shows the mini
+     * player, so it stays where you put it as you move around the app.
+     */
+    var miniOffset by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+
     /** Stop playback and close the session (mini player's X, or before a VOD takes the player). */
     fun close() {
         active?.viewModel?.dispose()

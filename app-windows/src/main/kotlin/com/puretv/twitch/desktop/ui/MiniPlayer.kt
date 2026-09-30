@@ -1,6 +1,25 @@
 package com.puretv.twitch.desktop.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import java.awt.Cursor
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,8 +70,10 @@ fun MiniPlayer(
     onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
     expandIsScrollTop: Boolean = false,
+    onDrag: ((Offset) -> Unit)? = null,
 ) {
     val session = host.active ?: return
+    val drag by rememberUpdatedState(onDrag)
     val state by session.viewModel.state.collectAsState()
     val isPlaying by remember(player) { player.status.map { it.isPlaying }.distinctUntilChanged() }
         .collectAsState(initial = player.status.value.isPlaying)
@@ -66,11 +87,38 @@ fun MiniPlayer(
             .clip(shape)
             .background(c.surfaceHigh),
     ) {
+        // The title bar is the drag handle. It's Compose, so it gets the drag events;
+        // the video below is a native window and would swallow them.
         Row(
-            modifier = Modifier.fillMaxWidth().height(52.dp).padding(start = 14.dp, end = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .then(
+                    if (onDrag != null) {
+                        Modifier
+                            .pointerHoverIcon(PointerIcon(Cursor(Cursor.MOVE_CURSOR)))
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, amount ->
+                                    change.consume()
+                                    drag?.invoke(amount)
+                                }
+                            }
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(start = if (onDrag != null) 6.dp else 14.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            if (onDrag != null) {
+                Icon(
+                    ExpressiveIcons.DragHandle,
+                    contentDescription = "Drag to move",
+                    tint = c.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
             Column(Modifier.weight(1f)) {
                 Text(
                     state.channel?.displayName ?: session.login,
@@ -119,6 +167,52 @@ fun MiniPlayer(
             kind = SlotKind.MINI,
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
             onClick = onExpand,
+        )
+    }
+}
+
+/**
+ * Hosts a [MiniPlayer] inside whatever area it's placed in (fill that area with
+ * this), starting in the bottom-right corner. Drag the title bar to move it; it
+ * can't be dragged out of the area, and it keeps its spot (see
+ * [PlaybackHost.miniOffset]) as you move between pages.
+ */
+@Composable
+fun MiniPlayerDock(
+    host: PlaybackHost,
+    player: DesktopPlayer,
+    onExpand: () -> Unit,
+    onClose: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    expandIsScrollTop: Boolean = false,
+    edgePadding: Dp = 20.dp,
+) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val padPx = with(LocalDensity.current) { edgePadding.toPx() }
+        val maxW = constraints.maxWidth.toFloat()
+        val maxH = constraints.maxHeight.toFloat()
+        var size by remember { mutableStateOf(IntSize.Zero) }
+
+        // The offset is measured from the bottom-right corner, so it only goes negative.
+        fun clamp(o: Offset): Offset {
+            val minX = -(maxW - 2 * padPx - size.width).coerceAtLeast(0f)
+            val minY = -(maxH - 2 * padPx - size.height).coerceAtLeast(0f)
+            return Offset(o.x.coerceIn(minX, 0f), o.y.coerceIn(minY, 0f))
+        }
+        val shown = clamp(host.miniOffset)
+
+        MiniPlayer(
+            host = host,
+            player = player,
+            onExpand = onExpand,
+            onClose = onClose,
+            expandIsScrollTop = expandIsScrollTop,
+            onDrag = { delta -> host.miniOffset = clamp(clamp(host.miniOffset) + delta) },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(edgePadding)
+                .offset { IntOffset(shown.x.roundToInt(), shown.y.roundToInt()) }
+                .onSizeChanged { size = it },
         )
     }
 }

@@ -90,11 +90,12 @@ import com.puretv.twitch.desktop.player.DesktopPlayer
 import com.puretv.twitch.desktop.discover.formatUptime
 import com.puretv.twitch.desktop.discover.languageFor
 import com.puretv.twitch.core.model.ChannelInfo
-import com.puretv.twitch.desktop.ui.MiniPlayer
+import com.puretv.twitch.desktop.ui.MiniPlayerDock
 import com.puretv.twitch.desktop.ui.PlaybackHost
 import com.puretv.twitch.desktop.ui.SlotKind
 import com.puretv.twitch.desktop.ui.VideoSlot
 import com.puretv.twitch.desktop.ui.components.ExpressivePanel
+import com.puretv.twitch.desktop.ui.components.MarkdownText
 import com.puretv.twitch.desktop.ui.LocalAppShell
 import com.puretv.twitch.desktop.ui.PlayerMode
 import com.puretv.twitch.desktop.ui.StreamViewModel
@@ -493,13 +494,13 @@ fun StreamContent(
                 }
 
                 if (docked) {
-                    MiniPlayer(
+                    MiniPlayerDock(
                         host = host,
                         player = vlcPlayer,
                         onExpand = { scope.launch { pageScroll.animateScrollTo(0) } },
                         onClose = null,
                         expandIsScrollTop = true,
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                        edgePadding = 16.dp,
                     )
                 }
             }
@@ -573,8 +574,8 @@ fun StreamContent(
 // ── About (below the player) ──────────────────────────────────────────────────
 
 /**
- * What Twitch shows under a stream: the full title, category, uptime, tags, then
- * the channel's bio, with the audience stats panel alongside. Only reachable by
+ * What Twitch shows under a stream: the full title, category, uptime, tags, the
+ * channel's bio, chat rules and info panels, with the audience stats panel alongside. Only reachable by
  * scrolling down, so the first screenful stays all player.
  */
 @Composable
@@ -644,13 +645,19 @@ private fun StreamAboutSection(
                     }
                     Spacer(Modifier.height(14.dp))
                     val bio = channel?.description?.takeIf { it.isNotBlank() }
-                    Text(
-                        bio ?: "This channel hasn't written a bio yet.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (bio != null) c.onSurfaceVariant else c.outline,
-                    )
+                    if (bio != null) {
+                        // Bios often carry links; MarkdownText makes them clickable.
+                        MarkdownText(bio)
+                    } else {
+                        Text(
+                            "This channel hasn't written a bio yet.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = c.outline,
+                        )
+                    }
                 }
             }
+            ChannelExtrasSection(koin = koin, channelLogin = channelLogin, panelColor = c.surfaceContainer)
         }
         ChannelStatsPanel(koin = koin, channelLogin = channelLogin)
     }

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.VerticalAlignTop
@@ -114,6 +115,7 @@ object ExpressiveIcons {
     val Send: ImageVector = Icons.AutoMirrored.Filled.Send
     val Expand: ImageVector = Icons.Filled.OpenInFull
     val ScrollTop: ImageVector = Icons.Filled.VerticalAlignTop
+    val DragHandle: ImageVector = Icons.Filled.DragIndicator
 
     // Status / layout
     val Shield: ImageVector = Icons.Filled.Shield
