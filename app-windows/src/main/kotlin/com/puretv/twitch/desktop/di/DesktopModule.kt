@@ -109,6 +109,11 @@ val desktopModule = module {
     // Raid alerts over Twitch's EventSub WebSocket; needs the signed-in user's token.
     single { val holder = get<TokenHolder>(); RaidWatcher(get()) { holder.current() } }
     single { DiscoverRepository(get<TwitchApiClient>(), get<TwitchDirectoryGql>()) }
+    // Reads your real Twitch follows for the Follow button (apps can't follow for you).
+    single {
+        val store = get<DesktopSettingsStore>()
+        com.puretv.twitch.desktop.channel.TwitchFollowStatus(get()) { if (store.isLoggedIn) store.sessionUserId else null }
+    }
     // Upcoming streams from followed channels' Twitch schedules (Home's Coming up shelf).
     single {
         val api = get<TwitchApiClient>()
@@ -159,6 +164,7 @@ val desktopModule = module {
         StreamViewModel(
             channelLogin, get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
             raids = get(),
+            followStatus = get(),
             onWatched = { ch, info ->
                 prefs.recordWatch(
                     HistoryEntry(
@@ -172,7 +178,7 @@ val desktopModule = module {
             },
         )
     }
-    factory { (channelLogin: String) -> ChannelViewModel(channelLogin, get(), get(), get()) }
+    factory { (channelLogin: String) -> ChannelViewModel(channelLogin, get(), get(), get(), followStatus = get()) }
     factory { (channelLogin: String) -> ChannelStatsViewModel(channelLogin, get(), get()) }
     factory { SettingsViewModel(get()) }
     // LoginViewModel collaborators: settingsStore, oauthManager, httpClient,

@@ -11,6 +11,17 @@ release notes automatically.
 
 ---
 
+## 1.20.0 - 2026-09-30
+
+The Follow button matches your Twitch account.
+
+### Fixed
+- **Follow shows your real Twitch follows.** Channels you follow on Twitch now
+  say "Following". Before, the button only tracked a separate PureTV-only list.
+- **Follow opens the channel on twitch.tv.** Twitch doesn't let other apps
+  follow for you, so the button takes you there to follow or unfollow. The
+  button updates when you come back to PureTV.
+
 ## 1.19.0 - 2026-09-30
 
 Stay signed in.

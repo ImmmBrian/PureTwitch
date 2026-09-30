@@ -1,5 +1,6 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.draw.shadow
 import androidx.compose.animation.AnimatedVisibility
@@ -187,6 +188,10 @@ fun StreamContent(
     // keep running in the mini player after this screen leaves composition.
     val state by viewModel.state.collectAsState()
     val isFollowed by viewModel.isFollowed.collectAsState()
+    // Check Twitch when this opens, and again whenever the app gets focus back
+    // (after following or unfollowing in the browser).
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(windowFocused) { if (windowFocused) viewModel.refreshFollow() }
     val vlcPlayer = remember { koin.get<DesktopPlayer>() }
     // The live screen never reads positionMs/durationMs, yet the backend emits a new
     // PlayerStatus on every time tick (VLC ~4Hz, mpv several Hz). Collecting the raw
@@ -391,7 +396,7 @@ fun StreamContent(
                                 adBlockStatus = state.adBlockStatus,
                                 isFollowed = isFollowed,
                                 canFollow = state.channel != null,
-                                onToggleFollow = viewModel::toggleFollow,
+                                onToggleFollow = viewModel::followOnTwitch,
                                 onBack = onBack,
                                 onMultiView = onMultiView,
                                 radius = panelRadius,

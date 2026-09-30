@@ -12,7 +12,7 @@ plugins {
 // ── App version (single source of truth) ─────────────────────────────────────
 // Drives both the MSI `packageVersion` AND the generated AppBuildConfig the
 // in-app updater compares against GitHub Releases — so the two can never drift.
-val appVersion = "1.19.0"
+val appVersion = "1.20.0"
 
 // Which GitHub repo the in-app updater checks. GitHub Actions sets GITHUB_REPOSITORY
 // ("owner/repo") on every run, so a fork's CI builds automatically update from the

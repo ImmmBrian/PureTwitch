@@ -46,6 +46,9 @@ import com.puretv.twitch.desktop.player.PlaybackStallWatchdog
 import com.puretv.twitch.desktop.player.ProxyUnavailableException
 import com.puretv.twitch.desktop.player.DesktopPlayer
 import com.puretv.twitch.desktop.channel.ChatModes
+import com.puretv.twitch.desktop.channel.TwitchFollowStatus
+import com.puretv.twitch.desktop.channel.followButtonShowsFollowing
+import com.puretv.twitch.desktop.channel.openFollowOnTwitch
 import com.puretv.twitch.desktop.data.SettingsEntry
 import com.puretv.twitch.desktop.data.searchSettings
 import com.puretv.twitch.desktop.channel.RaidWatcher
@@ -63,6 +66,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -407,6 +412,8 @@ class StreamViewModel(
     private val raids: RaidWatcher? = null,
     /** Called once the channel has loaded, to record it in watch history. */
     private val onWatched: (ChannelInfo, StreamInfo?) -> Unit = { _, _ -> },
+    /** Real Twitch follow status for the Follow button. Null in tests. */
+    private val followStatus: TwitchFollowStatus? = null,
 ) : DesktopViewModel() {
     private val _state = MutableStateFlow(StreamUiState())
 
@@ -451,9 +458,25 @@ class StreamViewModel(
     private var twitchGlobalEmotes: List<ChannelEmote> = emptyList()
     private var twitchChannelEmotes: List<ChannelEmote> = emptyList()
 
-    val isFollowed: StateFlow<Boolean> = followStore.followed
-        .map { list -> list.any { it.login.equals(channelLogin, ignoreCase = true) } }
+    // Your real Twitch follow (null until known, or when signed out). The button
+    // shows this; the old PureTV-only list is only the fallback.
+    private val onTwitch = MutableStateFlow<Boolean?>(null)
+    val isFollowed: StateFlow<Boolean> = combine(
+        followStore.followed.map { list -> list.any { it.login.equals(channelLogin, ignoreCase = true) } },
+        onTwitch,
+    ) { local, twitch -> followButtonShowsFollowing(twitch, local) }
         .stateIn(scope, SharingStarted.Eagerly, followStore.isFollowed(channelLogin))
+    private var followJob: Job? = null
+
+    /** Re-checks Twitch, e.g. when you come back from following in the browser. */
+    fun refreshFollow() {
+        val status = followStatus ?: return
+        followJob?.cancel()
+        followJob = scope.launch {
+            val id = state.map { it.channel?.id }.filterNotNull().first()
+            status.isFollowing(id, fresh = true)?.let { onTwitch.value = it }
+        }
+    }
 
     init {
         scope.launch {
@@ -842,17 +865,12 @@ class StreamViewModel(
             it.add(msg)
         }
 
-    /** Adds/removes this channel from the local Following list (see [FollowStore]). */
-    fun toggleFollow() {
-        val ch = _state.value.channel ?: return
-        followStore.toggle(
-            FollowedChannel(
-                id = ch.id,
-                login = ch.login,
-                displayName = ch.displayName,
-                profileImageUrl = ch.profileImageUrl,
-            ),
-        )
+    /**
+     * Twitch doesn't let apps follow for you, so this opens the channel on
+     * twitch.tv. The button re-checks when the app gets focus back.
+     */
+    fun followOnTwitch() {
+        openFollowOnTwitch(_state.value.channel?.login ?: channelLogin)
     }
 
     override fun onCleared() {
@@ -882,13 +900,30 @@ class ChannelViewModel(
     private val channelRepository: ChannelRepository,
     private val streamRepository: StreamRepository,
     private val followStore: FollowStore,
+    private val followStatus: TwitchFollowStatus? = null,
 ) : DesktopViewModel() {
     private val _state = MutableStateFlow(ChannelUiState())
     val state: StateFlow<ChannelUiState> = _state.asStateFlow()
 
-    val isFollowed: StateFlow<Boolean> = followStore.followed
-        .map { list -> list.any { it.login.equals(channelLogin, ignoreCase = true) } }
+    // Your real Twitch follow (null until known, or when signed out). The button
+    // shows this; the old PureTV-only list is only the fallback.
+    private val onTwitch = MutableStateFlow<Boolean?>(null)
+    val isFollowed: StateFlow<Boolean> = combine(
+        followStore.followed.map { list -> list.any { it.login.equals(channelLogin, ignoreCase = true) } },
+        onTwitch,
+    ) { local, twitch -> followButtonShowsFollowing(twitch, local) }
         .stateIn(scope, SharingStarted.Eagerly, followStore.isFollowed(channelLogin))
+    private var followJob: Job? = null
+
+    /** Re-checks Twitch, e.g. when you come back from following in the browser. */
+    fun refreshFollow() {
+        val status = followStatus ?: return
+        followJob?.cancel()
+        followJob = scope.launch {
+            val id = state.map { it.channel?.id }.filterNotNull().first()
+            status.isFollowing(id, fresh = true)?.let { onTwitch.value = it }
+        }
+    }
 
     init {
         scope.launch {
@@ -900,17 +935,12 @@ class ChannelViewModel(
         }
     }
 
-    /** Adds/removes this channel from the local Following list (see [FollowStore]). */
-    fun toggleFollow() {
-        val ch = _state.value.channel ?: return
-        followStore.toggle(
-            FollowedChannel(
-                id = ch.id,
-                login = ch.login,
-                displayName = ch.displayName,
-                profileImageUrl = ch.profileImageUrl,
-            ),
-        )
+    /**
+     * Twitch doesn't let apps follow for you, so this opens the channel on
+     * twitch.tv. The button re-checks when the app gets focus back.
+     */
+    fun followOnTwitch() {
+        openFollowOnTwitch(_state.value.channel?.login ?: channelLogin)
     }
 }
 

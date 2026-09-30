@@ -3,6 +3,7 @@ package com.puretv.twitch.desktop.ui.screens
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.delay
 import com.puretv.twitch.desktop.channel.ScheduleService
+import com.puretv.twitch.desktop.channel.openFollowOnTwitch
 import com.puretv.twitch.desktop.channel.UpcomingStream
 import com.puretv.twitch.desktop.channel.formatScheduleTime
 import com.puretv.twitch.desktop.data.HomeSection
@@ -194,20 +195,14 @@ fun HomeContent(
                 }
                 if (hero != null && prefs.look.showsHomeSection(HomeSection.HERO)) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        val isFollowed = followedChannels.any { it.login.equals(hero.login, ignoreCase = true) }
+                        // hero.followed comes from your real Twitch follows (merged shelf).
+                        val isFollowed = hero.followed || followedChannels.any { it.login.equals(hero.login, ignoreCase = true) }
                         HomeHero(
                             hero = hero,
                             isFollowed = isFollowed,
                             onWatch = { onWatch(hero.login) },
-                            onToggleFollow = {
-                                if (isFollowed) {
-                                    followStore.unfollow(hero.login)
-                                } else {
-                                    followStore.follow(
-                                        FollowedChannel(id = hero.userId, login = hero.login, displayName = hero.userName),
-                                    )
-                                }
-                            },
+                            // Twitch doesn't let apps follow for you: open the channel there.
+                            onToggleFollow = { openFollowOnTwitch(hero.login) },
                         )
                     }
                 }

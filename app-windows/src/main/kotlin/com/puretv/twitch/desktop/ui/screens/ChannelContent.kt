@@ -1,5 +1,7 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalWindowInfo
 import com.puretv.twitch.desktop.data.ViewPrefsStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.hoverable
@@ -87,6 +89,10 @@ fun ChannelContent(
     }
     val state by viewModel.state.collectAsState()
     val isFollowed by viewModel.isFollowed.collectAsState()
+    // Check Twitch when this opens, and again whenever the app gets focus back
+    // (after following or unfollowing in the browser).
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(windowFocused) { if (windowFocused) viewModel.refreshFollow() }
     val c = PureTvTheme.colors
 
     val channel = state.channel
@@ -124,7 +130,7 @@ fun ChannelContent(
                 isLive = state.isLive,
                 isFollowed = isFollowed,
                 onWatch = onWatch,
-                onToggleFollow = viewModel::toggleFollow,
+                onToggleFollow = viewModel::followOnTwitch,
             )
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {

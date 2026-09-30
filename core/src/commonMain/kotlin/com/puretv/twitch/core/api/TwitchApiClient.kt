@@ -153,6 +153,15 @@ class TwitchApiClient(
         return all
     }
 
+    /** GET /channels/followed?broadcaster_id= — does [userId] follow [broadcasterId] on Twitch? */
+    suspend fun isFollowing(userId: String, broadcasterId: String): Boolean {
+        val resp: HelixPagedEnvelope<FollowedChannel> = get(
+            "/channels/followed",
+            mapOf("user_id" to userId, "broadcaster_id" to broadcasterId),
+        )
+        return resp.data.isNotEmpty()
+    }
+
     /** GET /games/top — top live categories. */
     suspend fun getTopGames(first: Int = 20): List<GameInfo> {
         val resp: HelixEnvelope<GameInfo> = get("/games/top", mapOf("first" to first.toString()))
