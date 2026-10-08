@@ -265,6 +265,29 @@ fun StreamContent(
     }
     LaunchedEffect(mode) { resetControls() }
 
+
+    // Player hotkeys (F/T/C/Space/Esc) are handled at the AWT KeyboardFocusManager
+    // level, NOT via Compose's onKeyEvent. The heavyweight VLC video Canvas is a
+    // native window that can pull keyboard focus off Compose's Skia layer; once
+    // that happened the Compose key handler stopped firing and the user was
+    // trapped in fullscreen with F/Esc dead (the "stuck fullscreen" bug). A
+    // KeyEventDispatcher sees every key the focused window receives regardless of
+    // whether Compose or the Canvas currently holds focus, so the shortcuts can
+    // never die. We skip it while the chat input is focused so typing, including
+    // spaces and the letters f/t/c, still reaches the chat box.
+    // Typing in either chat box (here or the pop-out chat window) is tracked on the
+    // host so both can silence the shortcuts.
+    val latestMode = rememberUpdatedState(mode)
+    val latestChatFocused = rememberUpdatedState(host.chatInputFocused)
+    val latestUpscaling = rememberUpdatedState(appSettings.upscalingMode)
+    val latestVolume = rememberUpdatedState(playerStatus.volume)
+    // F3 toggles the mpv upscaling stats overlay. It's drawn by mpv's own OSD (the
+    // heavyweight video Canvas paints above Compose, so a Compose overlay can't sit
+    // on the video). No-op on the VLC backend.
+    var showStats by remember { mutableStateOf(false) }
+    // In-player Playback menu (gear): resolution / scaling / engine.
+    var settingsMenuOpen by remember { mutableStateOf(false) }
+
     // Fullscreen controls: shown while the mouse moves on this screen, gone after
     // a short pause or the moment the pointer leaves for another screen. Kept up
     // while the pointer rests on the controls themselves or the quality menu is open.
@@ -291,28 +314,6 @@ fun StreamContent(
             }
         }
     }
-
-    // Player hotkeys (F/T/C/Space/Esc) are handled at the AWT KeyboardFocusManager
-    // level, NOT via Compose's onKeyEvent. The heavyweight VLC video Canvas is a
-    // native window that can pull keyboard focus off Compose's Skia layer; once
-    // that happened the Compose key handler stopped firing and the user was
-    // trapped in fullscreen with F/Esc dead (the "stuck fullscreen" bug). A
-    // KeyEventDispatcher sees every key the focused window receives regardless of
-    // whether Compose or the Canvas currently holds focus, so the shortcuts can
-    // never die. We skip it while the chat input is focused so typing, including
-    // spaces and the letters f/t/c, still reaches the chat box.
-    // Typing in either chat box (here or the pop-out chat window) is tracked on the
-    // host so both can silence the shortcuts.
-    val latestMode = rememberUpdatedState(mode)
-    val latestChatFocused = rememberUpdatedState(host.chatInputFocused)
-    val latestUpscaling = rememberUpdatedState(appSettings.upscalingMode)
-    val latestVolume = rememberUpdatedState(playerStatus.volume)
-    // F3 toggles the mpv upscaling stats overlay. It's drawn by mpv's own OSD (the
-    // heavyweight video Canvas paints above Compose, so a Compose overlay can't sit
-    // on the video). No-op on the VLC backend.
-    var showStats by remember { mutableStateOf(false) }
-    // In-player Playback menu (gear): resolution / scaling / engine.
-    var settingsMenuOpen by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         val dispatcher = KeyEventDispatcher { e ->
             if (latestChatFocused.value) return@KeyEventDispatcher false
