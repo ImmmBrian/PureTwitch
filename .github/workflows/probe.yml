@@ -9,15 +9,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { path: probe }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: src }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
       - run: |
-          exec > probe-out.txt 2>&1
-          G() { curl -s -X POST https://gql.twitch.tv/gql -H "Client-ID: kimne78kx3ncx6brgo4mv6wki5h1ko" -H "Content-Type: application/json" --data "$1"; }
-          IDS=$(G '{"query":"query{games(first:60,options:{sort:VIEWER_COUNT}){edges{node{id}}}}"}' | python3 -c "import sys,json;print(' '.join(e['node']['id'] for e in json.load(sys.stdin)['data']['games']['edges']))")
-          echo "ids: $(echo $IDS | wc -w)"
-          for n in 5 20 50; do
-            Q=$(python3 -c "import sys,json;ids=sys.argv[2].split()[:int(sys.argv[1])];print(json.dumps({'query':'query{'+' '.join('g%d:game(id:\"%s\"){id viewersCount}'%(i,x) for i,x in enumerate(ids))+'}'}))" $n "$IDS")
-            echo "=== $n"; G "$Q" | head -c 700; echo
-          done
+          cd src
+          ./gradlew :core:allTests :app-windows:test --continue > ../out.txt 2>&1 || true
+          cd ..
+          { grep -E "^e: |FAILED|AssertionError|expected:<|Exception at|\.kt:[0-9]+" out.txt | head -60; echo ...; tail -40 out.txt; } > probe/probe-out.txt
+          for f in $(grep -l "<failure" src/*/build/test-results/*/*.xml 2>/dev/null | head -5); do echo "== $f" >> probe/probe-out.txt; grep -A8 "<failure" $f | head -20 >> probe/probe-out.txt; done
       - run: |
-          git config user.name probe; git config user.email probe@users.noreply.github.com
+          cd probe; git config user.name probe; git config user.email probe@users.noreply.github.com
           git add probe-out.txt; git commit -m "probe output [skip ci]"; git push
