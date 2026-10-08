@@ -1,8 +1,7 @@
-=== no-secret
-{"status":400,"message":"Invalid refresh token"}
-
-=== placeholder-secret
-{"status":400,"message":"Invalid refresh token"}
-
-=== device
-{"device_code":"1clh3iOqNvq6UgVyVDQlKjPKbvBawG8DO7AhPTav","expires_in":1800,"interval":5,"user_code":"GWWYQSSY","verification_uri":"https://www.twitch.tv/activate?device-code=GWWYQSSY"}
+ids: 60
+=== 5
+{"data":{"g0":{"id":"509658","viewersCount":238328},"g1":{"id":"32982","viewersCount":165926},"g2":{"id":"27471","viewersCount":143357},"g3":{"id":"771448419","viewersCount":93022},"g4":{"id":"18122","viewersCount":72063}},"extensions":{"durationMilliseconds":42,"requestID":"01M4CKN5YZCDK0K8ZDTETHVQZS"}}
+=== 20
+{"errors":[{"message":"The number of root field aliases 20 exceeds the root field aliases limit allowed (15)"}]}
+=== 50
+{"errors":[{"message":"The number of root field aliases 50 exceeds the root field aliases limit allowed (15)"}]}
