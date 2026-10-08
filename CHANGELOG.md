@@ -11,6 +11,17 @@ release notes automatically.
 
 ---
 
+## 1.21.0 - 2026-10-08
+
+Easier window moving.
+
+### Fixed
+- **Dragging the top bar moves the window every time.** Windows now handles the
+  drag directly, so it starts the moment you move the mouse.
+- **You can drag a maximized window** off the top bar to restore and move it,
+  like any other Windows app. Double-click the bar to maximize or restore, drag
+  to a screen edge to snap, and right-click the bar for the window menu.
+
 ## 1.20.0 - 2026-09-30
 
 The Follow button matches your Twitch account.

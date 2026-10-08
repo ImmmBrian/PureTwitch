@@ -101,7 +101,34 @@ object WindowsNative {
      */
     private interface User32Ext : Library {
         fun ReleaseCapture(): Boolean
+        fun ScreenToClient(hWnd: WinDef.HWND, lpPoint: WinDef.POINT): Boolean
     }
+
+    /**
+     * The custom title bar's drag area per window (HWND value), in client pixels:
+     * left, top, right, bottom. Reported by the Compose title bar on every layout
+     * and cleared when it leaves (fullscreen). [WM_NCHITTEST] answers HTCAPTION
+     * inside it, so Windows itself runs the drag: it starts on the first pixel,
+     * drags a maximized window back out, snaps, and double-click maximizes.
+     */
+    private val captionRegions = ConcurrentHashMap<Long, IntArray>()
+
+    /** Sets (or with null, clears) [window]'s title-bar drag area in client pixels. */
+    fun setCaptionRegion(window: Window, left: Int, top: Int, right: Int, bottom: Int) {
+        if (!isWindows) return
+        val ptr = runCatching { Native.getWindowPointer(window) }.getOrNull() ?: return
+        captionRegions[Pointer.nativeValue(ptr)] = intArrayOf(left, top, right, bottom)
+    }
+
+    fun clearCaptionRegion(window: Window) {
+        if (!isWindows) return
+        val ptr = runCatching { Native.getWindowPointer(window) }.getOrNull() ?: return
+        captionRegions.remove(Pointer.nativeValue(ptr))
+    }
+
+    /** True when (x, y) in client pixels falls inside [region] (left, top, right, bottom). */
+    internal fun insideRegion(region: IntArray?, x: Int, y: Int): Boolean =
+        region != null && region.size == 4 && x >= region[0] && x < region[2] && y >= region[1] && y < region[3]
 
     private val user32Ext: User32Ext? by lazy {
         runCatching { Native.load("user32", User32Ext::class.java) }.getOrNull()
@@ -191,6 +218,7 @@ object WindowsNative {
                             u.CallWindowProc(originalPtr, h, msg, wParam, lParam)
                         }
                         WM_NCHITTEST -> resizeHitTest(h, lParam)
+                            ?: captionHitTest(h, lParam)
                             ?: u.CallWindowProc(originalPtr, h, msg, wParam, lParam)
                         else -> u.CallWindowProc(originalPtr, h, msg, wParam, lParam)
                     }
@@ -248,6 +276,8 @@ object WindowsNative {
      * caller forwards to the default proc → HTCLIENT and Compose handles it).
      */
     private fun resizeHitTest(hwnd: WinDef.HWND, lParam: WinDef.LPARAM): WinDef.LRESULT? {
+        // A maximized window has no edges to resize; let the top row be title bar.
+        if (User32.INSTANCE.GetWindowLong(hwnd, WinUser.GWL_STYLE) and WS_MAXIMIZE != 0) return null
         val packed = lParam.toLong().toInt()
         val sx = (packed and 0xFFFF).toShort().toInt()
         val sy = (packed ushr 16 and 0xFFFF).toShort().toInt()
@@ -269,5 +299,14 @@ object WindowsNative {
             else -> return null
         }
         return WinDef.LRESULT(code.toLong())
+    }
+
+    /** HTCAPTION when the cursor is over the reported title-bar drag area, else null. */
+    private fun captionHitTest(hwnd: WinDef.HWND, lParam: WinDef.LPARAM): WinDef.LRESULT? {
+        val region = captionRegions[Pointer.nativeValue(hwnd.pointer)] ?: return null
+        val packed = lParam.toLong().toInt()
+        val pt = WinDef.POINT((packed and 0xFFFF).toShort().toInt(), (packed ushr 16 and 0xFFFF).toShort().toInt())
+        if (user32Ext?.ScreenToClient(hwnd, pt) != true) return null
+        return if (insideRegion(region, pt.x, pt.y)) WinDef.LRESULT(HTCAPTION.toLong()) else null
     }
 }

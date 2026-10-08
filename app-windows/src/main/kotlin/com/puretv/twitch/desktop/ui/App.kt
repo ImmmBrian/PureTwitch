@@ -1,5 +1,7 @@
 package com.puretv.twitch.desktop.ui
 
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -585,10 +587,20 @@ private fun CustomTitleBar(shell: AppShellController, onClose: () -> Unit, awtWi
         // toggles maximize, matching native title-bar behavior. If the native call
         // is unavailable we fall back to manual repositioning so the bar is never
         // "stuck".
+        // On Windows the drag area is a real title bar: its bounds go to the native
+        // hit test (WindowsNative.setCaptionRegion), so Windows runs the drag from
+        // the first pixel, drags a maximized window back out, snaps, and maximizes
+        // on double-click. The pointer handling below only runs where that native
+        // hook isn't available.
+        DisposableEffect(awtWindow) { onDispose { WindowsNative.clearCaptionRegion(awtWindow) } }
         Row(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .onGloballyPositioned { coords ->
+                    val b = coords.boundsInWindow()
+                    WindowsNative.setCaptionRegion(awtWindow, b.left.toInt(), b.top.toInt(), b.right.toInt(), b.bottom.toInt())
+                }
                 .padding(start = 16.dp)
                 .pointerInput(awtWindow) {
                     var lastDownTime = 0L
