@@ -1,7 +1,50 @@
-ids: 60
-=== 5
-{"data":{"g0":{"id":"509658","viewersCount":238328},"g1":{"id":"32982","viewersCount":165926},"g2":{"id":"27471","viewersCount":143357},"g3":{"id":"771448419","viewersCount":93022},"g4":{"id":"18122","viewersCount":72063}},"extensions":{"durationMilliseconds":42,"requestID":"01M4CKN5YZCDK0K8ZDTETHVQZS"}}
-=== 20
-{"errors":[{"message":"The number of root field aliases 20 exceeds the root field aliases limit allowed (15)"}]}
-=== 50
-{"errors":[{"message":"The number of root field aliases 50 exceeds the root field aliases limit allowed (15)"}]}
+w: file:///home/runner/work/PureTwitch/PureTwitch/src/core/src/commonMain/kotlin/com/puretv/twitch/core/api/PkceAuth.kt:144:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///home/runner/work/PureTwitch/PureTwitch/src/core/src/desktopMain/kotlin/com/puretv/twitch/core/Sha256.desktop.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///home/runner/work/PureTwitch/PureTwitch/src/core/src/androidMain/kotlin/com/puretv/twitch/core/Sha256.android.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///home/runner/work/PureTwitch/PureTwitch/src/core/src/commonMain/kotlin/com/puretv/twitch/core/api/PkceAuth.kt:144:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///home/runner/work/PureTwitch/PureTwitch/src/core/src/androidMain/kotlin/com/puretv/twitch/core/Sha256.android.kt:5:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///home/runner/work/PureTwitch/PureTwitch/src/core/src/commonMain/kotlin/com/puretv/twitch/core/api/PkceAuth.kt:144:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. You can use -Xexpect-actual-classes flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+e: file:///home/runner/work/PureTwitch/PureTwitch/src/app-windows/src/main/kotlin/com/puretv/twitch/desktop/ui/screens/StreamContent.kt:287:21 Unresolved reference 'settingsMenuOpen'.
+> Task :app-windows:compileKotlin FAILED
+BUILD FAILED in 2m 43s
+...
+> Task :core:desktopMainClasses
+> Task :core:bundleLibRuntimeToJarRelease
+> Task :core:bundleLibCompileToJarRelease
+> Task :core:bundleLibRuntimeToJarDebug
+> Task :core:desktopJar
+> Task :core:processDebugJavaRes
+> Task :core:bundleLibCompileToJarDebug
+> Task :core:compileDebugUnitTestKotlinAndroid
+> Task :core:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:processDebugUnitTestJavaRes
+> Task :core:compileReleaseUnitTestKotlinAndroid
+> Task :core:compileTestKotlinDesktop
+> Task :core:testDebugUnitTest
+> Task :core:desktopTestClasses
+> Task :core:desktopTest
+> Task :core:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :core:processReleaseJavaRes
+> Task :core:processReleaseUnitTestJavaRes
+> Task :core:testReleaseUnitTest
+> Task :core:allTests
+> Task :app-windows:compileKotlin
+e: file:///home/runner/work/PureTwitch/PureTwitch/src/app-windows/src/main/kotlin/com/puretv/twitch/desktop/ui/screens/StreamContent.kt:287:21 Unresolved reference 'settingsMenuOpen'.
+
+> Task :app-windows:compileKotlin FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app-windows:compileKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 2m 43s
+45 actionable tasks: 40 executed, 5 from cache
