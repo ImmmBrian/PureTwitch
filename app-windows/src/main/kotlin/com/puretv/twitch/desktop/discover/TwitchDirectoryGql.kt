@@ -1,5 +1,8 @@
 package com.puretv.twitch.desktop.discover
 
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import com.puretv.twitch.core.api.StreamPage
 import com.puretv.twitch.core.api.TwitchConfig
 import com.puretv.twitch.core.model.StreamInfo
@@ -65,11 +68,15 @@ class TwitchDirectoryGql(
     suspend fun gameViewerCounts(ids: List<String>): Map<String, Int> {
         val clean = ids.map { id -> id.filter { it.isDigit() } }.filter { it.isNotEmpty() }.distinct()
         if (clean.isEmpty()) return emptyMap()
-        val out = mutableMapOf<String, Int>()
-        clean.chunked(50).forEach { chunk ->
-            out += parseGameViewerCounts(post(buildGameViewerCountsQuery(chunk)))
+        // Twitch rejects a query with more than 15 aliased root fields, so ask in
+        // groups of 15 (a few at a time). One failed group doesn't lose the rest.
+        return coroutineScope {
+            clean.chunked(MAX_ALIASES).chunked(4).flatMap { wave ->
+                wave.map { chunk ->
+                    async { runCatching { parseGameViewerCounts(post(buildGameViewerCountsQuery(chunk))) }.getOrDefault(emptyMap()) }
+                }.awaitAll()
+            }.fold(mutableMapOf<String, Int>()) { acc, m -> acc.apply { putAll(m) } }
         }
-        return out
     }
 
     /** One page of live streams. Throws [DirectoryGqlException] on any GraphQL error. */
@@ -96,6 +103,8 @@ class TwitchDirectoryGql(
 
     companion object {
         const val PAGE_SIZE = 30
+        /** Twitch GQL's limit on aliased root fields per query. */
+        const val MAX_ALIASES = 15
     }
 }
 

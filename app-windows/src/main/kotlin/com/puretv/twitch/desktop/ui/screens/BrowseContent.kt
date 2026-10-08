@@ -300,7 +300,8 @@ private fun GameTile(
         )
         // Reserve the line even before counts arrive so the grid doesn't jump.
         Text(
-            if (viewers != null) "${formatViewerCount(viewers)} viewers" else " ",
+            // The exact number, so close categories can be told apart.
+            if (viewers != null) "${"%,d".format(viewers)} viewers" else " ",
             style = PureTvType.data,
             color = c.onSurfaceVariant,
             maxLines = 1,

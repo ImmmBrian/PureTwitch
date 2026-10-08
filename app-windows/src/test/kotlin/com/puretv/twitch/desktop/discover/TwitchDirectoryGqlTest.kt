@@ -81,4 +81,12 @@ class TwitchDirectoryGqlTest {
         assertTrue(missing.streams.isEmpty())
         assertNull(missing.cursor)
     }
+
+    @Test fun viewer_count_queries_stay_under_twitchs_alias_limit() {
+        // Twitch answers "root field aliases ... exceeds ... (15)" above 15, which
+        // blanked every Browse count when the lookup asked for 50 at a time.
+        assertEquals(15, TwitchDirectoryGql.MAX_ALIASES)
+        val q = buildGameViewerCountsQuery((1..TwitchDirectoryGql.MAX_ALIASES).map { "$it" })
+        assertEquals(TwitchDirectoryGql.MAX_ALIASES, Regex("g\\d+:game").findAll(q).count())
+    }
 }

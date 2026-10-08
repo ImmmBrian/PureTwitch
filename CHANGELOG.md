@@ -11,6 +11,24 @@ release notes automatically.
 
 ---
 
+## 1.22.0 - 2026-10-08
+
+Browse viewer counts and smoother fullscreen.
+
+### Fixed
+- **Browse shows how many people are watching each category**, as an exact
+  number. The counts were never loading before because PureTV asked Twitch for
+  too many at once.
+
+### Improved
+- **Fullscreen is instant.** The stream fills the screen the moment you click,
+  with no bars sliding away or the picture resizing afterward.
+- **Fullscreen controls float over the video** and fade out after two seconds
+  without mouse movement, or right away when your mouse moves to another
+  screen. Move the mouse to bring them back. They stay up while you're using
+  them or the quality menu is open. Fullscreen shows the video only; chat comes
+  back when you leave fullscreen.
+
 ## 1.21.0 - 2026-10-08
 
 Easier window moving.

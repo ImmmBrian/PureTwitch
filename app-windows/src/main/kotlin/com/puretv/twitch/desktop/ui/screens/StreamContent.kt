@@ -1,5 +1,9 @@
 package com.puretv.twitch.desktop.ui.screens
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.wrapContentHeight
+import java.awt.MouseInfo
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.draw.shadow
@@ -217,10 +221,15 @@ fun StreamContent(
     // chrome goes fully edge-to-edge when immersive, and springs back into the
     // "separate rounded cards" look the moment the user returns to DEFAULT.
     val immersive = mode != PlayerMode.DEFAULT
-    val groundPad by animateDpAsState(if (immersive) 0.dp else 8.dp, tween(PureTvMotion.Medium), label = "groundPad")
-    val panelRadius by animateDpAsState(if (immersive) 0.dp else 24.dp, tween(PureTvMotion.Medium), label = "panelRadius")
+    // Fullscreen snaps rather than animates: each animated step would resize the
+    // video again. The controls float over it in their own windows (FullscreenHud).
+    val fullscreen = mode == PlayerMode.FULLSCREEN
+    val groundPadAnimated by animateDpAsState(if (immersive) 0.dp else 8.dp, tween(PureTvMotion.Medium), label = "groundPad")
+    val panelRadiusAnimated by animateDpAsState(if (immersive) 0.dp else 24.dp, tween(PureTvMotion.Medium), label = "panelRadius")
+    val groundPad = if (fullscreen) 0.dp else groundPadAnimated
+    val panelRadius = if (fullscreen) 0.dp else panelRadiusAnimated
 
-    val chatWidth by animateDpAsState(
+    val chatWidthAnimated by animateDpAsState(
         targetValue = if (isChatOpen) CHAT_WIDTH else 0.dp,
         animationSpec = tween(PureTvMotion.Medium),
         label = "chatWidth",
@@ -228,11 +237,14 @@ fun StreamContent(
     // The breathing room between the player column and the chat card. Tied to
     // isChatOpen (not the immersive ground padding) so chat keeps its own gap even
     // when the player chrome has gone edge-to-edge.
-    val chatGap by animateDpAsState(
+    val chatGapAnimated by animateDpAsState(
         targetValue = if (isChatOpen) 8.dp else 0.dp,
         animationSpec = tween(PureTvMotion.Medium),
         label = "chatGap",
     )
+    // Fullscreen is the video alone.
+    val chatWidth = if (fullscreen) 0.dp else chatWidthAnimated
+    val chatGap = if (fullscreen) 0.dp else chatGapAnimated
 
     // Controls visibility: always shown in DEFAULT, auto-hides in THEATER/FULLSCREEN
     var controlsVisible by remember { mutableStateOf(true) }
@@ -243,7 +255,8 @@ fun StreamContent(
     fun resetControls() {
         controlsVisible = true
         hideJob?.cancel()
-        if (currentMode != PlayerMode.DEFAULT) {
+        // Fullscreen has its own pointer watcher below.
+        if (currentMode == PlayerMode.THEATER) {
             hideJob = scope.launch {
                 delay(PureTvMotion.ControlsAutoHideMs)
                 controlsVisible = false
@@ -251,6 +264,33 @@ fun StreamContent(
         }
     }
     LaunchedEffect(mode) { resetControls() }
+
+    // Fullscreen controls: shown while the mouse moves on this screen, gone after
+    // a short pause or the moment the pointer leaves for another screen. Kept up
+    // while the pointer rests on the controls themselves or the quality menu is open.
+    if (fullscreen) {
+        LaunchedEffect(Unit) {
+            controlsVisible = true
+            var last = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
+            var movedAt = System.currentTimeMillis()
+            while (true) {
+                delay(100)
+                val p = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
+                val screen = shell.mainWindow.bounds
+                val now = System.currentTimeMillis()
+                val onScreen = p != null && screen.contains(p)
+                val overControls = p != null && controlsVisible &&
+                    (p.y < screen.y + HUD_TOP_PX || p.y > screen.y + screen.height - HUD_BOTTOM_PX)
+                when {
+                    !onScreen -> controlsVisible = false
+                    p != last -> { controlsVisible = true; movedAt = now }
+                    settingsMenuOpen || overControls -> movedAt = now
+                    now - movedAt > FULLSCREEN_IDLE_MS -> controlsVisible = false
+                }
+                last = p
+            }
+        }
+    }
 
     // Player hotkeys (F/T/C/Space/Esc) are handled at the AWT KeyboardFocusManager
     // level, NOT via Compose's onKeyEvent. The heavyweight VLC video Canvas is a
@@ -363,6 +403,70 @@ fun StreamContent(
                 }
             },
     ) {
+        // Fullscreen: the controls float over the video in their own see-through
+        // windows (nothing in this window can draw over the native video), so the
+        // picture fills the screen at once and never resizes when they come and go.
+        if (fullscreen && state.playableUrl != null && !host.popOutRequested) {
+            FullscreenHud(
+                owner = shell.mainWindow,
+                visible = controlsVisible,
+                top = {
+                    TopBar(
+                        mode = mode,
+                        channelName = state.channel?.displayName ?: channelLogin,
+                        avatarUrl = state.channel?.profileImageUrl,
+                        streamInfo = state.streamInfo,
+                        adBlockStatus = state.adBlockStatus,
+                        isFollowed = isFollowed,
+                        canFollow = state.channel != null,
+                        onToggleFollow = viewModel::followOnTwitch,
+                        onBack = onBack,
+                        onMultiView = onMultiView,
+                        radius = panelRadius,
+                    )
+                },
+                bottom = {
+                    Column {
+                        if (settingsMenuOpen) {
+                            PlayerSettingsMenu(
+                                currentQuality = state.currentQuality,
+                                onQualitySelected = viewModel::setQuality,
+                                upscalingMode = appSettings.upscalingMode,
+                                onUpscalingSelected = viewModel::setUpscaling,
+                                scalingEnabled = vlcPlayer.supportsUpscaling,
+                                backend = appSettings.playbackBackend,
+                                onBackendSelected = viewModel::setPlaybackBackend,
+                            )
+                        }
+                        PlaybackControls(
+                            isPlaying = playerStatus.isPlaying,
+                            volume = playerStatus.volume,
+                            isMuted = playerStatus.isMuted,
+                            settingsOpen = settingsMenuOpen,
+                            audioOnly = state.currentQuality == StreamQuality.AUDIO_ONLY,
+                            onToggleAudioOnly = viewModel::toggleAudioOnly,
+                            mode = mode,
+                            isChatOpen = isChatOpen,
+                            onTogglePlayPause = viewModel::togglePlayPause,
+                            onVolumeChange = viewModel::setVolume,
+                            onToggleMute = viewModel::toggleMute,
+                            onToggleSettings = { settingsMenuOpen = !settingsMenuOpen },
+                            onToggleChat = { shell.toggleChat() },
+                            onToggleTheater = { shell.setPlayerMode(if (mode == PlayerMode.THEATER) PlayerMode.DEFAULT else PlayerMode.THEATER) },
+                            onToggleFullscreen = { shell.setPlayerMode(if (mode == PlayerMode.FULLSCREEN) PlayerMode.DEFAULT else PlayerMode.FULLSCREEN) },
+                            poppedOut = host.popOutRequested,
+                            onTogglePopOut = {
+                                // Immersive modes make no sense with the video in another window.
+                                shell.exitImmersive()
+                                host.popOutRequested = !host.popOutRequested
+                            },
+                            radius = panelRadius,
+                        )
+                    }
+                },
+            )
+        }
+
         Row(Modifier.fillMaxSize()) {
             // ── Player + controls column ───────────────────────────────────────
             // In DEFAULT mode the column scrolls: the first screenful is the player
@@ -382,8 +486,9 @@ fun StreamContent(
                         modifier = Modifier.fillMaxWidth().height(viewportHeight),
                         verticalArrangement = Arrangement.spacedBy(groundPad),
                     ) {
-                        // Top bar: always in DEFAULT, slides up when idle in THEATER/FULLSCREEN
-                        AnimatedVisibility(
+                        // Top bar: always in DEFAULT, slides up when idle in THEATER.
+                        // Fullscreen shows it in the floating HUD instead.
+                        if (!fullscreen) AnimatedVisibility(
                             visible = controlsVisible || mode == PlayerMode.DEFAULT,
                             enter = slideInVertically { -it } + fadeIn(),
                             exit = slideOutVertically { -it } + fadeOut(),
@@ -508,7 +613,7 @@ fun StreamContent(
                             // heavyweight Canvas paints above Compose), between video and controls.
                             // Opening it pushes the video up, the same way the controls bar does.
                             AnimatedVisibility(
-                                visible = settingsMenuOpen,
+                                visible = settingsMenuOpen && !fullscreen,
                                 enter = expandVertically() + fadeIn(),
                                 exit = shrinkVertically() + fadeOut(),
                             ) {
@@ -524,8 +629,9 @@ fun StreamContent(
                             }
                         }
 
-                        // Controls bar: always in DEFAULT, slides down when idle in THEATER/FULLSCREEN
-                        AnimatedVisibility(
+                        // Controls bar: always in DEFAULT, slides down when idle in THEATER.
+                        // Fullscreen shows it in the floating HUD instead.
+                        if (!fullscreen) AnimatedVisibility(
                             visible = controlsVisible || mode == PlayerMode.DEFAULT,
                             enter = slideInVertically { it } + fadeIn(),
                             exit = slideOutVertically { it } + fadeOut(),
@@ -1648,6 +1754,75 @@ private fun ChatUserCard(
                 style = ExpressiveButtonStyle.Tonal,
                 size = ExpressiveButtonSize.Small,
             )
+        }
+    }
+}
+
+/** How long the mouse can rest before the fullscreen controls fade. */
+private const val FULLSCREEN_IDLE_MS = 2_000L
+/** Rough heights (screen px) of the fullscreen controls, so resting on them keeps them up. */
+private const val HUD_TOP_PX = 120
+private const val HUD_BOTTOM_PX = 160
+
+/**
+ * The fullscreen controls: a strip at the top (channel) and one at the bottom
+ * (playback), each its own borderless, see-through window sitting over the
+ * video. They never take keyboard focus, so shortcuts keep working, and they
+ * fade in and out without touching the video's size.
+ */
+@Composable
+private fun FullscreenHud(
+    owner: java.awt.Window,
+    visible: Boolean,
+    top: @Composable () -> Unit,
+    bottom: @Composable () -> Unit,
+) {
+    HudStrip(owner, atTop = true, visible = visible, content = top)
+    HudStrip(owner, atTop = false, visible = visible, content = bottom)
+}
+
+@Composable
+private fun HudStrip(owner: java.awt.Window, atTop: Boolean, visible: Boolean, content: @Composable () -> Unit) {
+    val alpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(if (visible) 120 else 220),
+        label = "hudAlpha",
+    )
+    // Hide the window itself once faded, so it stops catching clicks on the video.
+    val shown = visible || alpha > 0.01f
+    androidx.compose.ui.window.DialogWindow(
+        visible = shown,
+        create = {
+            androidx.compose.ui.awt.ComposeDialog(owner, java.awt.Dialog.ModalityType.MODELESS).apply {
+                isUndecorated = true
+                isTransparent = true
+                isResizable = false
+                focusableWindowState = false
+                isAutoRequestFocus = false
+                val b = owner.bounds
+                setBounds(b.x, if (atTop) b.y else b.y + b.height - 120, b.width, 120)
+            }
+        },
+        dispose = { it.dispose() },
+    ) {
+        val dialog = window
+        val density = LocalDensity.current
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(align = if (atTop) Alignment.Top else Alignment.Bottom, unbounded = true)
+                    .onSizeChanged { px ->
+                        // Fit the window to the strip and pin it to the screen edge.
+                        val b = owner.bounds
+                        val h = kotlin.math.max(1, kotlin.math.round(px.height / density.density).toInt())
+                        val y = if (atTop) b.y else b.y + b.height - h
+                        if (dialog.height != h || dialog.y != y || dialog.width != b.width || dialog.x != b.x) {
+                            dialog.setBounds(b.x, y, b.width, h)
+                        }
+                    }
+                    .graphicsLayer { this.alpha = alpha },
+            ) { content() }
         }
     }
 }

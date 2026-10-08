@@ -94,6 +94,9 @@ class AppShellController(
 
     fun toggleChat() { isChatOpenState = !isChatOpenState }
 
+    /** The main window, for windows that sit on top of it (the fullscreen controls). */
+    val mainWindow: Window get() = window
+
     /** True for the app's main window (not the pop-out player or chat windows). */
     fun isMainWindow(w: Window?): Boolean = w === window
 

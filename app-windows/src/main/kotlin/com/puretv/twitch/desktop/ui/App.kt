@@ -1,5 +1,6 @@
 package com.puretv.twitch.desktop.ui
 
+import androidx.compose.animation.ExitTransition
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.animation.AnimatedVisibility
@@ -378,16 +379,21 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                     // Not the morph spring: this one is structural, and an overshooting
                     // spring would drive the value negative on the way to 0, which
                     // Modifier.padding and Arrangement.spacedBy both reject at layout time.
-                    val gutter by animateDpAsState(
+                    // Fullscreen snaps instead: every animated step there resizes the
+                    // video again, which read as the screen "adjusting" after the click.
+                    val fullscreen = shell.playerMode == PlayerMode.FULLSCREEN
+                    val gutterAnimated by animateDpAsState(
                         targetValue = if (shell.isImmersive) 0.dp else 8.dp,
                         animationSpec = tween(PureTvMotion.Medium, easing = PureTvMotion.Standard),
                         label = "shellGutter",
                     )
-                    val paneCorner by animateDpAsState(
+                    val gutter = if (fullscreen) 0.dp else gutterAnimated
+                    val paneCornerAnimated by animateDpAsState(
                         targetValue = if (shell.isImmersive) 0.dp else shapes.pane,
                         animationSpec = tween(PureTvMotion.Medium, easing = PureTvMotion.Standard),
                         label = "paneCorner",
                     )
+                    val paneCorner = if (fullscreen) 0.dp else paneCornerAnimated
 
                     Row(
                         modifier = Modifier
@@ -399,7 +405,7 @@ fun App(koin: Koin, windowState: WindowState, onClose: () -> Unit, awtWindow: Aw
                         AnimatedVisibility(
                             visible = !shell.isImmersive,
                             enter = slideInHorizontally { -it },
-                            exit = slideOutHorizontally { -it },
+                            exit = if (fullscreen) ExitTransition.None else slideOutHorizontally { -it },
                         ) {
                             NavigationRail(
                                 hiddenTabs = look.hiddenTabs,
