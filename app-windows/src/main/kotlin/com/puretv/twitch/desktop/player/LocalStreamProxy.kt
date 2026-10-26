@@ -3,15 +3,19 @@ package com.puretv.twitch.desktop.player
 import com.puretv.twitch.core.adblock.AdBlockEngine
 import com.puretv.twitch.core.adblock.AdMarkers
 import com.puretv.twitch.core.adblock.BackupStreamResolver
+import com.puretv.twitch.core.adblock.MediaPlaylistCleaner
 import com.puretv.twitch.core.model.AdBlockStrategyResult
 import com.puretv.twitch.core.model.CleanStreamResult
 import com.puretv.twitch.core.model.StreamQuality
 import com.puretv.twitch.core.repository.StreamRepository
+import com.puretv.twitch.core.stream.StreamResolver
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
@@ -53,22 +57,24 @@ class LocalStreamProxy(
     private val streamRepository: StreamRepository,
     private val adBlockEngine: AdBlockEngine,
     private val httpClient: HttpClient,
-    private val backupStreamResolver: BackupStreamResolver,
+    backupStreamResolver: BackupStreamResolver,
 ) {
     companion object {
         const val PORT = 7979
 
+        /** @see StreamResolver.PRIMARY_PLAYER_TYPE */
+        const val PRIMARY_PLAYER_TYPE = StreamResolver.PRIMARY_PLAYER_TYPE
+
         /**
-         * Player type used for the PRIMARY stream resolution. `popout` is
-         * targeted with far fewer ads than the default `site` web player
-         * (the reference userscript forces this for every request), so most
-         * streams come back ad-free before the backup swap is even needed.
+         * The address the proxy listens on. URLs name it as 127.0.0.1, not `localhost`:
+         * `localhost` can resolve to IPv6 ::1 first, where another program may hold the same
+         * port, and the player would then talk to that program instead.
          */
-        const val PRIMARY_PLAYER_TYPE = "popout"
+        const val HOST = "127.0.0.1"
 
         /** Builds the URL VLCJ should be pointed at for [channelLogin]/[quality]. */
         fun streamUrl(channelLogin: String, quality: StreamQuality = StreamQuality.AUTO): String =
-            "http://localhost:$PORT/stream?channel=$channelLogin&quality=${quality.name}"
+            "http://$HOST:$PORT/stream?channel=$channelLogin&quality=${quality.name}"
 
         /**
          * The /variant route fetches an upstream URL on the player's behalf, so
@@ -82,6 +88,18 @@ class LocalStreamProxy(
         fun isAllowedVariantHost(url: String): Boolean {
             val host = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase() ?: return false
             return host == "ttvnw.net" || host.endsWith(".ttvnw.net")
+        }
+
+        /**
+         * True when a request's Host header names this machine's loopback address. A web page
+         * can reach 127.0.0.1 through its own domain (DNS rebinding) and would then be
+         * "same origin" with the proxy, able to read /diag and the playlists and to drive
+         * /simulate; its requests carry that domain as Host, so anything else is refused.
+         * The players always send 127.0.0.1:7979 (see [HOST]).
+         */
+        fun isAllowedHostHeader(host: String?): Boolean {
+            val name = host?.trim()?.lowercase()?.substringBeforeLast(':') ?: return false
+            return name == HOST || name == "localhost"
         }
 
         /**
@@ -134,7 +152,18 @@ class LocalStreamProxy(
     // check → serve) can be exercised live without waiting for a real midroll.
     // Mirrors vaft's window.simulateAds().
     private val simulateAds = AtomicBoolean(false)
-    private val timelineNormalizer = HlsTimelineNormalizer()
+
+    // The ad-blocking rules shared with the phone and TV apps: backup player-type
+    // swap (bounded so a slow token mint cannot stall playback), then stripping,
+    // then the timeline normalizer. VLC copes with an empty window on its own (and
+    // the stream screen has a stall watchdog), so the empty-window hold stays off.
+    private val cleaner = MediaPlaylistCleaner(
+        adBlockEngine = adBlockEngine,
+        backupStreamResolver = backupStreamResolver,
+        httpClient = httpClient,
+        nowMs = System::currentTimeMillis,
+        holdEmptyWindows = false,
+    )
 
     /**
      * Snapshot of one /stream resolution, captured so the user can inspect
@@ -153,7 +182,13 @@ class LocalStreamProxy(
 
     suspend fun start() = lifecycleLock.withLock {
         if (engine != null) return@withLock
-        val server = embeddedServer(Netty, port = PORT, host = "127.0.0.1") {
+        val server = embeddedServer(Netty, port = PORT, host = HOST) {
+            intercept(ApplicationCallPipeline.Plugins) {
+                if (!isAllowedHostHeader(call.request.headers[HttpHeaders.Host])) {
+                    call.respondText("Forbidden", status = HttpStatusCode.Forbidden)
+                    finish()
+                }
+            }
             routing {
                 get("/stream") {
                     val channel = call.request.queryParameters["channel"]
@@ -165,9 +200,17 @@ class LocalStreamProxy(
                     val quality = runCatching { StreamQuality.valueOf(qualityParam ?: "AUTO") }.getOrDefault(StreamQuality.AUTO)
 
                     totalRequests.incrementAndGet()
+                    // A new play of this channel: its ad-block reports count again.
+                    adBlockEngine.claimChannel(channel)
                     runCatching {
                         val playable = streamRepository.resolvePlayableStream(channel, playerType = PRIMARY_PLAYER_TYPE)
-                        adBlockEngine.resolveCleanStream(playable.masterUrl, quality)
+                        // Resolution already fetched and validated the master; reuse it.
+                        adBlockEngine.resolveCleanStream(
+                            playable.masterUrl,
+                            quality,
+                            prefetchedMaster = playable.rawContent,
+                            channel = channel,
+                        )
                     }.onSuccess { result ->
                         when (result) {
                             is CleanStreamResult.Success -> {
@@ -220,7 +263,7 @@ class LocalStreamProxy(
                         // GQL token mint failed). resolveCleanStream never set a status, so
                         // flip the engine off UNKNOWN here — otherwise the pill hangs on
                         // "Checking…" forever and hides the outage (GOTCHA #1 lesson).
-                        adBlockEngine.reportResolutionFailure()
+                        adBlockEngine.reportResolutionFailure(channel)
                         lastFailure.set(
                             FetchSnapshot(
                                 channel = channel,
@@ -272,18 +315,30 @@ class LocalStreamProxy(
                     runCatching {
                         httpClient.get(originalUrl).bodyAsText()
                     }.onSuccess { raw ->
-                        val (servedText, strategy) = resolveCleanVariant(raw, channel, resolution, frameRate)
-                        // Backup player types are separate Twitch HLS sessions. Their
-                        // session-local MEDIA-SEQUENCE values can differ by thousands
-                        // from the primary even though both playlists cover the same
-                        // broadcast instant. Normalize and monotonically align every
-                        // response before VLC sees it at this stable localhost URL.
-                        val timeline = timelineNormalizer.normalize(originalUrl, servedText)
-                        if (timeline.sequenceNormalized) variantSequenceNormalizations.incrementAndGet()
-                        if (timeline.segmentsTrimmed > 0) {
-                            variantTimelineSegmentsTrimmed.addAndGet(timeline.segmentsTrimmed)
+                        // Backup swap, strip, and the timeline normalization that keeps
+                        // VLC's view continuous across player-type sessions (a backup's
+                        // MEDIA-SEQUENCE can differ by thousands from the primary's).
+                        val cleaned = cleaner.clean(
+                            variantUrl = originalUrl,
+                            raw = raw,
+                            channelLogin = channel.ifBlank { null },
+                            quality = MediaPlaylistCleaner.VariantQuality(resolution, frameRate),
+                            forceAd = simulateAds.get(),
+                        )
+                        when (cleaned.strategy) {
+                            MediaPlaylistCleaner.Strategy.BACKUP -> variantBackupSwaps.incrementAndGet()
+                            MediaPlaylistCleaner.Strategy.STRIP ->
+                                if (cleaned.adSegmentsRemoved > 0) variantAdSegmentsStripped.addAndGet(cleaned.adSegmentsRemoved)
+                            else -> Unit
                         }
-                        val deliveredText = timeline.content
+                        if (cleaned.sequenceNormalized) variantSequenceNormalizations.incrementAndGet()
+                        if (cleaned.segmentsTrimmed > 0) {
+                            variantTimelineSegmentsTrimmed.addAndGet(cleaned.segmentsTrimmed)
+                        }
+                        val deliveredText = cleaned.content
+                        val strategy = cleaned.backupPlayerType
+                            ?.let { "BACKUP_${it.uppercase()}" }
+                            ?: cleaned.strategy.name
                         lastVariant.set(
                             FetchSnapshot(
                                 channel = channel.ifBlank { "(variant)" },
@@ -388,45 +443,6 @@ class LocalStreamProxy(
             sample = deliveredContent.take(800),
             timestampMs = System.currentTimeMillis(),
         )
-    }
-
-    /**
-     * Decide what to serve VLC for one variant playlist [raw]:
-     *   - clean already → pass through (cheap rewriter no-op);
-     *   - has a stitched ad and we know the [channel]/[resolution] → try the
-     *     backup player-type swap for a seamless ad-free playlist;
-     *   - backups all ad-showing (or no channel info) → strip (stalls the ad).
-     *
-     * Returns the playlist text plus a short strategy label for diagnostics.
-     */
-    private suspend fun resolveCleanVariant(
-        raw: String,
-        channel: String,
-        resolution: String,
-        frameRate: Double,
-    ): Pair<String, String> {
-        val hasAd = AdMarkers.containsAds(raw) || simulateAds.get()
-        if (!hasAd) return raw to "CLEAN"
-
-        if (channel.isNotBlank()) {
-            val backup = runCatching {
-                backupStreamResolver.resolveAdFreeMediaPlaylist(
-                    channelLogin = channel,
-                    targetResolution = resolution,
-                    targetFrameRate = frameRate,
-                    nowMs = System.currentTimeMillis(),
-                )
-            }.getOrNull()
-            if (backup != null) {
-                variantBackupSwaps.incrementAndGet()
-                return backup.mediaPlaylist to "BACKUP_${backup.playerType.uppercase()}"
-            }
-        }
-
-        // No clean backup available — strip the ad pod (player stalls through it).
-        val filtered = adBlockEngine.filterPlaylist(raw)
-        if (filtered.adSegmentsRemoved > 0) variantAdSegmentsStripped.addAndGet(filtered.adSegmentsRemoved)
-        return filtered.content to "STRIP"
     }
 
     /**

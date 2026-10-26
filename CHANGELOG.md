@@ -11,6 +11,32 @@ release notes automatically.
 
 ---
 
+## 1.23.0 - 2026-10-26
+
+Ad blocking fixes from the original PureTV project.
+
+### Fixed
+- **Ad breaks no longer freeze the picture while PureTV looks for a clean
+  stream.** If a backup stream takes more than 4 seconds to answer, PureTV
+  stops waiting and cuts the ad out instead.
+- **Fewer wasted retries during long ad breaks.** A backup stream that fails
+  is left alone for 15 seconds instead of being asked again every couple of
+  seconds.
+- **Better backup streams.** PureTV now tries the "embed" player first and
+  the regular web player second, instead of asking again for the same player
+  that just served the ad.
+- **The ad block badge is more accurate.** It now updates on every playlist
+  refresh, so it shows when an ad is being skipped and goes back to green
+  when the ad is over.
+- **Streams open a little faster**, because PureTV no longer downloads the
+  stream's playlist twice when you open a channel.
+
+### Security
+- **The local stream server only answers PureTV itself.** Web pages can no
+  longer reach it by pointing their own web address at your computer, and the
+  player always connects to 127.0.0.1 so another program on the same port
+  can't get in the way.
+
 ## 1.22.0 - 2026-10-08
 
 Browse viewer counts and smoother fullscreen.
