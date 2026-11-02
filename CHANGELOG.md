@@ -11,6 +11,20 @@ release notes automatically.
 
 ---
 
+## 1.24.0 - 2026-11-02
+
+Ad blocking fixes from the original PureTV project.
+
+### Fixed
+- **Fewer stalls when Twitch has a hiccup.** If a playlist refresh fails or
+  hangs, PureTV now waits at most 3 seconds, tries once more, and briefly
+  reuses the last good playlist instead of passing the error to the player.
+- **Error pages are no longer mistaken for ad-free streams.** During an ad
+  break, a backup stream that answers with an error (an expired or restarted
+  session) is now ignored, and the ad is stripped instead.
+- **Stream links with special characters play correctly.** The local proxy
+  no longer decodes Twitch's playlist address twice.
+
 ## 1.23.0 - 2026-10-26
 
 Ad blocking fixes from the original PureTV project.
